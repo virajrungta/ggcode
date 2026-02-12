@@ -81,3 +81,15 @@ ai/models/*.json
 **/__pycache__/
 **/**/node_modules/
 backend/**/venv/
+*.log
+*.txt.bak
+expo_log.txt
+output.log
+.expo/
+.next/
+.pnp*
+coverage/
+build/
+dist/
+.DS_Store
+.env*
