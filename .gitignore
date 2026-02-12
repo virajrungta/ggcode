@@ -1,0 +1,83 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Next.js
+.next/
+out/
+
+# Production build
+build/
+
+# Backend
+__pycache__/
+*.py[cod]
+*$py.class
+.venv
+venv/
+ENV/
+env/
+.env
+.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+.packages
+.pub-cache/
+.pub/
+build/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/Ephemeral/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/android/local.properties
+**/android/key.properties
+**/android/Flutter/src/main/res/values/strings.xml
+*.flutter-plugins*
+
+# Expo
+.expo/
+*.jks
+*.p12
+*.key
+*.mobileprovision
+*.orig
+web-build/
+
+# Mobile specific
+mobile_flutter_legacy/build/
+mobile_flutter_legacy/.dart_tool/
+mobile/node_modules/
+mobile/.expo/
+mobile/expo_output.log
+
+# Legacy and Corrupted Data
+.git_corrupted/
+ai/data/*.csv
+ai/models/*.keras
+ai/models/*.pkl
+ai/models/*.json
+**/__pycache__/
+**/**/node_modules/
+backend/**/venv/
