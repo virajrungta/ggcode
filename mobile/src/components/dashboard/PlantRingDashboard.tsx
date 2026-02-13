@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Image, Text } from 'react-native';
+import { View, StyleSheet, Image, Text, Platform } from 'react-native';
 import { CircularProgress } from '../ui/CircularProgress';
 import { Theme } from '../../theme';
 import { BlurView } from 'expo-blur';
@@ -134,11 +134,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 4,
     borderColor: '#FFFFFF',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 5,
+    ...Platform.select({
+      web: { boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.15)' },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 10,
+        elevation: 5,
+      },
+    }) as any,
     backgroundColor: '#fff',
     zIndex: 10,
   },

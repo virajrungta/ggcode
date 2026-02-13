@@ -133,7 +133,29 @@ export const Theme = {
   },
 };
 
-import { StyleSheet } from "react-native";
+import { StyleSheet, Platform } from "react-native";
+
+const shadowDefault = Platform.select({
+  web: { boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.3)' },
+  default: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+}) as any;
+
+const shadowElevated = Platform.select({
+  web: { boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.5)' },
+  default: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+}) as any;
 
 // Standard card styles - Updated for Dark Mode
 export const CardStyles = StyleSheet.create({
@@ -142,20 +164,12 @@ export const CardStyles = StyleSheet.create({
     borderRadius: Theme.radius.l,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    ...shadowDefault,
   },
   containerElevated: {
     backgroundColor: Theme.colors.surface,
     borderRadius: Theme.radius.l,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 8,
+    ...shadowElevated,
   },
 });
 
@@ -166,19 +180,13 @@ export const GlassStyles = StyleSheet.create({
     borderRadius: Theme.radius.l,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...shadowDefault,
   },
   card: {
     backgroundColor: Theme.colors.surface,
     borderRadius: Theme.radius.l,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...shadowDefault,
   },
 });
