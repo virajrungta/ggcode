@@ -3,10 +3,13 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "prestart": "node scripts/verify-deps.js",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "clean": "rm -rf node_modules .expo",
+    "reset": "npm run clean && npm ci"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
