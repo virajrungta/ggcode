@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeAuth, browserLocalPersistence } from "firebase/auth";
+import { initializeAuth, browserLocalPersistence, Auth } from "firebase/auth";
 // @ts-ignore - getReactNativePersistence exists at runtime but is not in the TS types
 import { getReactNativePersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
@@ -22,7 +22,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Auth with Persistence
-let auth;
+let auth: Auth;
 if (Platform.OS === "web") {
   auth = initializeAuth(app, {
     persistence: browserLocalPersistence,
