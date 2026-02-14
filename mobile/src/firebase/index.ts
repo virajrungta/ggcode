@@ -17,6 +17,6 @@ export {
   joinCommunity,
   uploadPlantImage,
   uploadCommunityImage,
-  seedCommunitiesIfEmpty,
+  wipeAllCommunities,
 } from './firestoreService';
 export type { GrowthEntry, Community } from './firestoreService';

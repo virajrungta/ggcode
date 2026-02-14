@@ -1,41 +1,102 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import React, { useState } from 'react';
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, ActivityIndicator, TextInput, Modal, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, Alert } from 'react-native';
 import { Theme } from '../theme';
-import { Users, Plus, ArrowRight } from 'lucide-react-native';
+import { Users, Plus, ArrowRight, Search, Lock, Key } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { subscribeToCommunities, seedCommunitiesIfEmpty, Community, joinCommunity } from '../firebase';
+import { subscribeToCommunities, Community, joinCommunity, wipeAllCommunities, getCommunities } from '../firebase';
+import { BlurView } from 'expo-blur';
 
 export default function CommunityScreen() {
+    const navigation = useNavigation<any>();
     const insets = useSafeAreaInsets();
     const [communities, setCommunities] = useState<Community[]>([]);
+    const [filteredCommunities, setFilteredCommunities] = useState<Community[]>([]);
     const [loading, setLoading] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    
+    // Join Code Modal
+    const [isJoinModalVisible, setIsJoinModalVisible] = useState(false);
+    const [joinCodeInput, setJoinCodeInput] = useState('');
+    const [joining, setJoining] = useState(false);
 
     useEffect(() => {
-      // 1. Ensure we have data
-      seedCommunitiesIfEmpty();
+      const initWipeAndSubscribe = async () => {
+        // WIPE ALL DATA (As requested to remove placeholders)
+        await wipeAllCommunities();
+        
+        // Then start subscription
+        const unsubscribe = subscribeToCommunities((data) => {
+          setCommunities(data);
+          setLoading(false);
+        });
+        return unsubscribe;
+      };
 
-      // 2. Subscribe to real-time updates
-      const unsubscribe = subscribeToCommunities((data) => {
-        setCommunities(data);
-        setLoading(false);
+      let unsubFunc: (() => void) | undefined;
+      initWipeAndSubscribe().then(unsub => {
+        unsubFunc = unsub;
       });
 
-      return () => unsubscribe();
+      return () => {
+        if (unsubFunc) unsubFunc();
+      };
     }, []);
+
+    useEffect(() => {
+        if (!searchQuery.trim()) {
+            setFilteredCommunities(communities.filter(c => !c.isPrivate));
+            return;
+        }
+
+        const query = searchQuery.toLowerCase().trim();
+        const filtered = communities.filter(c => {
+            if (!c.isPrivate && c.name.toLowerCase().includes(query)) return true;
+            return false;
+        });
+        setFilteredCommunities(filtered);
+    }, [searchQuery, communities]);
 
     const handleJoin = async (id: string) => {
       try {
         await joinCommunity(id);
-        // Ideally show a toast
+        Alert.alert("Success", "You have joined the group!");
       } catch (error) {
         console.error("Failed to join community:", error);
       }
     };
+    
+    const handleJoinByCode = async () => {
+        if (!joinCodeInput.trim()) return;
+        setJoining(true);
+        
+        // Find community with this code
+        // In a real app, use a query. For now, filter client side list (since we subscribe to all).
+        // Wait, 'subscribeToCommunities' returns ALL. If RLS is enabled, we might not see private ones?
+        // Assuming we fetch all for now.
+        const target = communities.find(c => c.joinCode === joinCodeInput.trim());
+        
+        if (target) {
+            await handleJoin(target.id);
+            setJoining(false);
+            setIsJoinModalVisible(false);
+            setJoinCodeInput('');
+            navigation.navigate('PlantGroup', { groupId: target.id, name: target.name });
+        } else {
+            setJoining(false);
+            Alert.alert("Invalid Code", "No group found with that join code.");
+        }
+    };
 
     const renderItem = ({ item, index }: { item: Community, index: number }) => (
         <Animated.View entering={FadeInDown.delay(index * 100).duration(600)}>
-            <TouchableOpacity activeOpacity={0.9} style={styles.cardContainer}>
+            <TouchableOpacity 
+                activeOpacity={0.9} 
+                style={styles.cardContainer}
+                onPress={() => navigation.navigate('PlantGroup', { groupId: item.id, name: item.name })}
+            >
                 <Image source={{ uri: item.imageUrl }} style={styles.cardImage} />
                 <View style={styles.cardContent}>
                     <View>
@@ -43,6 +104,12 @@ export default function CommunityScreen() {
                         <View style={styles.cardMeta}>
                             <Users size={12} color="#888" />
                             <Text style={styles.metaText}>{item.members.toLocaleString()} MEMBERS</Text>
+                            {item.isPrivate && (
+                                <View style={styles.privateTag}>
+                                    <Lock size={10} color={Theme.colors.primary} />
+                                    <Text style={styles.privateText}>PRIVATE</Text>
+                                </View>
+                            )}
                         </View>
                     </View>
                     <TouchableOpacity 
@@ -74,23 +141,88 @@ export default function CommunityScreen() {
             </View>
             <Text style={styles.headerTitle}>CIRCLES</Text>
         </View>
-        <TouchableOpacity style={styles.createButton}>
-            <Plus size={24} color="#000" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity 
+                style={styles.createButton}
+                onPress={() => setIsJoinModalVisible(true)}
+            >
+                <Key size={24} color="#000" />
+            </TouchableOpacity>
+            <TouchableOpacity 
+                style={styles.createButton}
+                onPress={() => navigation.navigate('CreateCommunity')}
+            >
+                <Plus size={24} color="#000" />
+            </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <Search size={20} color="#666" style={styles.searchIcon} />
+        <TextInput 
+            style={styles.searchInput}
+            placeholder="Search groups..."
+            placeholderTextColor="#666"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+        />
       </View>
 
       <FlatList
-        data={communities}
+        data={filteredCommunities}
         renderItem={renderItem}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>
-            No communities found.
-          </Text>
+          <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>
+                  {searchQuery ? "No communities found." : "No communities yet. Create one!"}
+              </Text>
+          </View>
         }
       />
+      
+      {/* Join Code Modal */}
+      <Modal
+        visible={isJoinModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsJoinModalVisible(false)}
+      >
+        <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1} 
+            onPress={() => setIsJoinModalVisible(false)}
+        >
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                <TouchableWithoutFeedback>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Enter Join Code</Text>
+                        <Text style={styles.modalSubtitle}>Enter the invite code to join a private group.</Text>
+                        
+                        <TextInput
+                            style={styles.modalInput}
+                            placeholder="X7Y9Z2"
+                            placeholderTextColor="#666"
+                            value={joinCodeInput}
+                            onChangeText={txt => setJoinCodeInput(txt.toUpperCase())}
+                            maxLength={8}
+                        />
+                        
+                        <TouchableOpacity 
+                            style={styles.modalButton}
+                            onPress={handleJoinByCode}
+                            disabled={joining}
+                        >
+                            {joining ? <ActivityIndicator color="#000" /> : <Text style={styles.modalButtonText}>Join Group</Text>}
+                        </TouchableOpacity>
+                    </View>
+                </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+        </TouchableOpacity>
+      </Modal>
+
     </View>
   );
 }
@@ -190,6 +322,102 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#333',
+  },
+  searchContainer: {
+    marginHorizontal: 24,
+    marginBottom: 24,
+    height: 50,
+    backgroundColor: '#0F1612',
+    borderRadius: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#222',
+  },
+  searchIcon: {
+    marginRight: 12,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    height: '100%',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 60,
+  },
+  emptyText: {
+    color: '#666',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  privateTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(212, 255, 0, 0.1)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  privateText: {
+    color: Theme.colors.primary,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 20,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    color: '#888',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  modalInput: {
+    backgroundColor: '#000',
+    borderRadius: 12,
+    padding: 16,
+    color: '#fff',
+    fontSize: 18,
+    textAlign: 'center',
+    letterSpacing: 2,
+    borderWidth: 1,
+    borderColor: '#333',
+    marginBottom: 24,
+  },
+  modalButton: {
+    backgroundColor: Theme.colors.primary,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 

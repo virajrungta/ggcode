@@ -10,6 +10,8 @@ import DashboardScreen from '../screens/DashboardScreen';
 import CommunityScreen from '../screens/CommunityScreen';
 import AnalyticsScreen from '../screens/AnalyticsScreen';
 import LoginScreen from '../screens/LoginScreen';
+import PlantGroupScreen from '../screens/Community/PlantGroupScreen';
+import CreateCommunityScreen from '../screens/Community/CreateCommunityScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -93,6 +95,8 @@ export default function AppNavigator() {
     >
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Main" component={TabNavigator} />
+      <Stack.Screen name="PlantGroup" component={PlantGroupScreen} />
+      <Stack.Screen name="CreateCommunity" component={CreateCommunityScreen} />
     </Stack.Navigator>
   );
 }

@@ -11,6 +11,7 @@ import {
   orderBy,
   Timestamp,
   addDoc,
+  where,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './config';
@@ -223,6 +224,34 @@ export interface Community {
   imageUrl: string;
   description?: string;
   createdBy: string;
+  admins: string[];
+  isPrivate: boolean;
+  joinCode?: string; // Only if private
+  tags: string[];
+}
+
+// ... (existing)
+
+export async function getCommunity(id: string): Promise<Community | null> {
+  const docRef = doc(db, 'communities', id);
+  const docSnap = await getDoc(docRef);
+  
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    return {
+      id: docSnap.id,
+      name: data.name,
+      members: data.members || 0,
+      imageUrl: data.imageUrl || '',
+      description: data.description || '',
+      createdBy: data.createdBy || '',
+      admins: data.admins || [],
+      isPrivate: data.isPrivate || false,
+      joinCode: data.joinCode,
+      tags: data.tags || [],
+    };
+  }
+  return null;
 }
 
 export async function getCommunities(): Promise<Community[]> {
@@ -237,6 +266,10 @@ export async function getCommunities(): Promise<Community[]> {
       imageUrl: data.imageUrl || '',
       description: data.description || '',
       createdBy: data.createdBy || '',
+      admins: data.admins || [],
+      isPrivate: data.isPrivate || false,
+      joinCode: data.joinCode,
+      tags: data.tags || [],
     };
   });
 }
@@ -252,6 +285,10 @@ export function subscribeToCommunities(callback: (communities: Community[]) => v
         imageUrl: data.imageUrl || '',
         description: data.description || '',
         createdBy: data.createdBy || '',
+        admins: data.admins || [],
+        isPrivate: data.isPrivate || false,
+        joinCode: data.joinCode,
+        tags: data.tags || [],
       };
     });
     callback(communities);
@@ -314,22 +351,12 @@ export async function uploadCommunityImage(base64: string, communityName: string
 // SEED INITIAL DATA (For first-time setup)
 // ===========================
 
-export async function seedCommunitiesIfEmpty(): Promise<void> {
+export async function wipeAllCommunities(): Promise<void> {
   const snapshot = await getDocs(collection(db, 'communities'));
   
-  if (snapshot.empty) {
-    const defaultCommunities = [
-      { name: 'SUCCULENT LOVERS', members: 12500, imageUrl: 'https://images.unsplash.com/photo-1459416493396-b6b9372901c0?q=80&w=400&auto=format&fit=crop', description: 'A community for succulent enthusiasts', createdBy: 'system' },
-      { name: 'INDOOR JUNGLE', members: 8200, imageUrl: 'https://images.unsplash.com/photo-1463320726281-696a485928c7?q=80&w=400&auto=format&fit=crop', description: 'Transform your space into a green paradise', createdBy: 'system' },
-      { name: 'ORCHID WHISPERERS', members: 3100, imageUrl: 'https://images.unsplash.com/photo-1566933294862-4090d279361a?q=80&w=400&auto=format&fit=crop', description: 'Master the art of orchid care', createdBy: 'system' },
-      { name: 'VEG GARDENERS', members: 45000, imageUrl: 'https://images.unsplash.com/photo-1592419044706-39796d40f98c?q=80&w=400&auto=format&fit=crop', description: 'Grow your own food at home', createdBy: 'system' },
-    ];
-    
-    for (const community of defaultCommunities) {
-      await addDoc(collection(db, 'communities'), {
-        ...community,
-        createdAt: Timestamp.now(),
-      });
-    }
-  }
+  if (snapshot.empty) return;
+
+  const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+  await Promise.all(deletePromises);
+  console.log(`Wiped ${deletePromises.length} communities.`);
 }
