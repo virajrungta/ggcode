@@ -38,34 +38,37 @@ export function MetricCard({ label, value, unit, icon: Icon, color, status }: Me
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
+    padding: 20,
     flex: 1,
-    minWidth: 140,
+    minWidth: 150,
     backgroundColor: '#0F1612',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: 'rgba(255,255,255,0.03)',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   iconContainer: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
   },
   statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 4,
   },
   content: {
-    gap: 4,
+    gap: 6,
   },
   valueRow: {
     flexDirection: 'row',
@@ -73,20 +76,20 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 28,
-    fontWeight: '800', // Extra bold
+    fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -1,
   },
   unit: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: '700',
+    color: Theme.colors.textTertiary,
     marginLeft: 4,
   },
   label: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#888', // Muted text
+    fontWeight: '800',
+    color: Theme.colors.textSecondary,
     letterSpacing: 1.5,
   },
 });

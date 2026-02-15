@@ -36,7 +36,7 @@ export function GlassCard({
 
   return (
     <BlurView intensity={intensity} tint={tint} style={containerStyle}>
-      <View style={styles.borderOverlay} />
+      <View style={styles.borderOverlay} pointerEvents="none" />
       {children}
     </BlurView>
   );
@@ -72,6 +72,5 @@ const styles = StyleSheet.create({
     borderRadius: Theme.radius.xl,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.5)',
-    pointerEvents: 'none',
   },
 });

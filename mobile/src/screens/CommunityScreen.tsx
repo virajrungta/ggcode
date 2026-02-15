@@ -23,11 +23,8 @@ export default function CommunityScreen() {
     const [joining, setJoining] = useState(false);
 
     useEffect(() => {
-      const initWipeAndSubscribe = async () => {
-        // WIPE ALL DATA (As requested to remove placeholders)
-        await wipeAllCommunities();
-        
-        // Then start subscription
+      const initSubscribe = async () => {
+        setLoading(true);
         const unsubscribe = subscribeToCommunities((data) => {
           setCommunities(data);
           setLoading(false);
@@ -36,7 +33,7 @@ export default function CommunityScreen() {
       };
 
       let unsubFunc: (() => void) | undefined;
-      initWipeAndSubscribe().then(unsub => {
+      initSubscribe().then(unsub => {
         unsubFunc = unsub;
       });
 
@@ -230,79 +227,80 @@ export default function CommunityScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050A07', // Dark background
+    backgroundColor: Theme.colors.bgMain,
   },
   header: {
     paddingHorizontal: 24,
-    paddingBottom: 32,
+    paddingBottom: 24,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
+    alignItems: 'center',
   },
   badgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 12,
+    marginBottom: 4,
+    gap: 8,
   },
   badgeLine: {
-    width: 24,
+    width: 20,
     height: 2,
     backgroundColor: Theme.colors.primary,
   },
   badgeText: {
     color: Theme.colors.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     letterSpacing: 2,
   },
   headerTitle: {
-    fontSize: 42, // Massive
+    fontSize: 32,
     fontWeight: '800',
-    color: '#fff',
-    letterSpacing: -2,
-    lineHeight: 42,
+    color: Theme.colors.textPrimary,
+    letterSpacing: -1,
+    lineHeight: 36,
   },
   createButton: {
-    width: 48,
-    height: 48,
-    backgroundColor: Theme.colors.primary, // Volt Green
+    width: 44,
+    height: 44,
+    backgroundColor: Theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    borderRadius: 12,
   },
   listContent: {
     paddingHorizontal: 24,
-    paddingBottom: 100,
+    paddingBottom: 120,
     gap: 16,
   },
   cardContainer: {
-    backgroundColor: '#0F1612',
+    backgroundColor: Theme.colors.surface,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#222',
-    height: 120,
+    borderColor: 'rgba(255,255,255,0.05)',
+    height: 110,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 24,
+    overflow: 'hidden',
   },
   cardImage: {
-    width: 100,
+    width: 90,
     height: '100%',
-    backgroundColor: '#222',
+    backgroundColor: '#111',
   },
   cardContent: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingLeft: 20,
+    paddingHorizontal: 16,
   },
   cardTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
-    marginBottom: 8,
-    letterSpacing: 0.5,
+    color: Theme.colors.textPrimary,
+    marginBottom: 4,
+    letterSpacing: 0.2,
   },
   cardMeta: {
     flexDirection: 'row',
@@ -310,49 +308,52 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   metaText: {
-    fontSize: 12,
-    color: '#888',
+    fontSize: 11,
+    color: Theme.colors.textSecondary,
     fontWeight: '600',
     letterSpacing: 0.5,
   },
   joinButton: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   searchContainer: {
     marginHorizontal: 24,
-    marginBottom: 24,
-    height: 50,
-    backgroundColor: '#0F1612',
-    borderRadius: 25,
+    marginBottom: 20,
+    height: 48,
+    backgroundColor: Theme.colors.surface,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: '#222',
+    borderColor: 'rgba(255,255,255,0.05)',
   },
   searchIcon: {
     marginRight: 12,
   },
   searchInput: {
     flex: 1,
-    color: '#fff',
-    fontSize: 16,
+    color: Theme.colors.textPrimary,
+    fontSize: 14,
     height: '100%',
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 60,
+    paddingHorizontal: 40,
   },
   emptyText: {
-    color: '#666',
-    fontSize: 16,
+    color: Theme.colors.textTertiary,
+    fontSize: 14,
     textAlign: 'center',
+    lineHeight: 20,
   },
   privateTag: {
     flexDirection: 'row',
@@ -371,53 +372,56 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     padding: 24,
   },
   modalContent: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: '#0F1612',
+    borderRadius: 24,
+    padding: 32,
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   modalTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+    color: Theme.colors.textPrimary,
+    fontSize: 22,
+    fontWeight: '800',
     marginBottom: 8,
     textAlign: 'center',
   },
   modalSubtitle: {
-    color: '#888',
+    color: Theme.colors.textSecondary,
     fontSize: 14,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
+    lineHeight: 20,
   },
   modalInput: {
     backgroundColor: '#000',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    color: '#fff',
-    fontSize: 18,
+    color: Theme.colors.textPrimary,
+    fontSize: 24,
     textAlign: 'center',
-    letterSpacing: 2,
+    letterSpacing: 4,
     borderWidth: 1,
     borderColor: '#333',
-    marginBottom: 24,
+    marginBottom: 32,
+    fontWeight: '700',
   },
   modalButton: {
     backgroundColor: Theme.colors.primary,
-    height: 50,
-    borderRadius: 25,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalButtonText: {
     color: '#000',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });
 

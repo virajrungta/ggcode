@@ -132,19 +132,19 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.1)',
     ...Platform.select({
-      web: { boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.15)' },
+      web: { boxShadow: '0px 12px 24px rgba(0, 0, 0, 0.5)' },
       default: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 10,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.5,
+        shadowRadius: 20,
+        elevation: 10,
       },
     }) as any,
-    backgroundColor: '#fff',
+    backgroundColor: Theme.colors.bgMain,
     zIndex: 10,
   },
   image: {

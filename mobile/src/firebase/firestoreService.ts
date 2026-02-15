@@ -14,7 +14,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './config';
+import { db, storage, auth } from './config';
 import { getCurrentUser } from './authService';
 import { Pot, PlantData, SensorData } from '../utils/types';
 
@@ -352,11 +352,20 @@ export async function uploadCommunityImage(base64: string, communityName: string
 // ===========================
 
 export async function wipeAllCommunities(): Promise<void> {
-  const snapshot = await getDocs(collection(db, 'communities'));
-  
-  if (snapshot.empty) return;
+  const user = auth.currentUser;
+  if (!user) {
+    console.log("No user signed in, skipping wipe.");
+    return;
+  }
 
-  const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-  await Promise.all(deletePromises);
-  console.log(`Wiped ${deletePromises.length} communities.`);
+  try {
+    const snapshot = await getDocs(collection(db, 'communities'));
+    if (snapshot.empty) return;
+
+    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    console.log(`Wiped ${deletePromises.length} communities.`);
+  } catch (error) {
+    console.error("Failed to wipe communities (likely permissions):", error);
+  }
 }
