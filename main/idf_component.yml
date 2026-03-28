@@ -1,0 +1,4 @@
+dependencies:
+  h2zero/esp-nimble-cpp: 
+    version: ">=1.4.1"
+  idf: ">=5.0"
