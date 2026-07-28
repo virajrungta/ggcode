@@ -24,6 +24,20 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Permits cleartext HTTP to LAN addresses only, so the app can reach a
+	     backend running on a dev machine. This is NOT NSAllowsArbitraryLoads:
+	     public-internet HTTP stays blocked, which is what App Review checks. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- Required from iOS 14 for any local-network traffic, including a LAN
+	     backend. Without it the first request fails with no useful error. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>GreenGenius connects to your pot and to a local development server on your network.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>GreenGenius uses Bluetooth to set up and talk to your plant pot.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
