@@ -6,14 +6,30 @@ import '../../core/providers.dart';
 import '../../design/components.dart';
 import '../../design/mesh_background.dart';
 import '../../design/tokens.dart';
-import 'pot_detail_screen.dart';
 import 'widgets/attention_card.dart';
+import 'widgets/bento_metrics.dart';
+import 'widgets/pot_hero.dart';
 
-class DashboardScreen extends ConsumerWidget {
+/// Home.
+///
+/// Structure, top to bottom: a collapsing large title, a swipeable hero card
+/// per pot, an asymmetric bento grid of that pot's readings, then the
+/// attention card.
+///
+/// Deliberately not the banner → quick-action-row → section-list shape: that
+/// arrangement is everywhere, and it buries the actual reading two thirds of
+/// the way down the page behind a row of buttons. Here the number a user
+/// opened the app for is above the fold.
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  @override
+  Widget build(BuildContext context) {
     final pots = ref.watch(potsProvider);
 
     return MeshBackground(
@@ -22,6 +38,7 @@ class DashboardScreen extends ConsumerWidget {
         body: RefreshIndicator(
           backgroundColor: GGColors.surface,
           color: GGColors.primary,
+          edgeOffset: 100,
           onRefresh: () async {
             ref.invalidate(potsProvider);
             await ref.read(potsProvider.future);
@@ -29,66 +46,36 @@ class DashboardScreen extends ConsumerWidget {
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              SliverToBoxAdapter(
-                child: _Hero(potCount: pots.valueOrNull?.length ?? 0)
-                    .entrance(),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: GGSpacing.l)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: GGSpacing.page,
-                  child: _Attention(pots: pots.valueOrNull ?? const [])
-                      .entrance(index: 1),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: GGSpacing.l)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: GGSpacing.page,
-                  child: const _QuickActions().entrance(index: 2),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: GGSpacing.xl)),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: GGSpacing.page,
-                  child: const GGSectionHeader(title: 'Your plants')
-                      .entrance(index: 3),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: GGSpacing.m)),
-              pots.when(
-                loading: () => const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(GGSpacing.xxl),
+              const _CollapsingHeader(),
+              ...pots.when(
+                loading: () => [
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
                     child: Center(child: CircularProgressIndicator()),
                   ),
-                ),
-                error: (e, _) => SliverToBoxAdapter(
-                  child: GGEmptyState(
-                    icon: Icons.cloud_off_rounded,
-                    title: "Can't reach the server",
-                    body: e.toString(),
+                ],
+                error: (e, _) => [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: GGEmptyState(
+                      icon: Icons.cloud_off_rounded,
+                      title: "Can't reach the server",
+                      body: e.toString(),
+                    ),
                   ),
-                ),
+                ],
                 data: (list) => list.isEmpty
-                    ? const SliverToBoxAdapter(
-                        child: GGEmptyState(
-                          icon: Icons.eco_rounded,
-                          title: 'No pots yet',
-                          body: 'Pair a GreenGenius pot to start tracking it.',
+                    ? [
+                        const SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: GGEmptyState(
+                            icon: Icons.eco_rounded,
+                            title: 'No pots yet',
+                            body: 'Pair a GreenGenius pot to start tracking it.',
+                          ),
                         ),
-                      )
-                    : SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                        sliver: SliverList.separated(
-                          itemCount: list.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: GGSpacing.m),
-                          itemBuilder: (context, i) =>
-                              _PotCard(pot: list[i]).entrance(index: 4 + i),
-                        ),
-                      ),
+                      ]
+                    : _content(list),
               ),
             ],
           ),
@@ -96,12 +83,39 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
   }
+
+  List<Widget> _content(List<Pot> pots) => [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, GGSpacing.s, 20, 0),
+            child: PotHeroCarousel(pots: pots).entrance(),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: GGSpacing.l)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: GGSpacing.page,
+            child: _Readings(pot: pots.first).entrance(index: 1),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: GGSpacing.l)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: GGSpacing.page,
+            child: _Attention(pots: pots).entrance(index: 2),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 120)),
+      ];
 }
 
-class _Hero extends StatelessWidget {
-  const _Hero({required this.potCount});
-
-  final int potCount;
+/// Large title that shrinks into a pinned bar on scroll.
+///
+/// Replaces the fixed gradient banner. The banner ate ~200px permanently; this
+/// gives the same presence at rest and hands the space back as soon as the
+/// user starts reading.
+class _CollapsingHeader extends StatelessWidget {
+  const _CollapsingHeader();
 
   @override
   Widget build(BuildContext context) {
@@ -112,327 +126,132 @@ class _Hero extends StatelessWidget {
             ? 'Good afternoon'
             : 'Good evening';
 
-    return GGHeroHeader(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    greeting,
-                    style: const TextStyle(
-                      fontFamily: kFontFamily,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      color: GGColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    'GreenGenius',
-                    style: TextStyle(
-                      fontFamily: kFontFamily,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      color: GGColors.onPrimaryContainer,
-                      letterSpacing: -1,
-                      height: 1.1,
-                    ),
-                  ),
-                ],
-              ),
-              const GGIconTile(icon: Icons.person_rounded, size: 44),
-            ],
+    return SliverAppBar(
+      pinned: true,
+      expandedHeight: 132,
+      backgroundColor: GGColors.bg,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: GGSpacing.m),
+          child: GGTappable(
+            radius: GGRadius.round,
+            onTap: () {},
+            child: const GGIconTile(icon: Icons.person_rounded, size: 38),
           ),
-          const SizedBox(height: GGSpacing.l),
-          Container(
-            padding: const EdgeInsets.all(GGSpacing.m - 2),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.7),
-              borderRadius: GGRadius.mAll,
-              border: Border.all(color: Colors.white),
+        ),
+      ],
+      flexibleSpace: LayoutBuilder(
+        builder: (context, constraints) {
+          final top = MediaQuery.of(context).padding.top;
+          // 0 collapsed, 1 fully expanded.
+          final t = ((constraints.maxHeight - top - kToolbarHeight) /
+                  (132 - kToolbarHeight))
+              .clamp(0.0, 1.0);
+
+          return FlexibleSpaceBar(
+            titlePadding: EdgeInsets.only(
+              left: 20,
+              // Ride from the collapsed baseline down to the expanded one so
+              // the title glides rather than jumping between two positions.
+              bottom: 14 + 4 * t,
             ),
-            child: Row(
+            title: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.eco_rounded, color: GGColors.primary, size: 20),
-                const SizedBox(width: GGSpacing.m - 4),
-                Expanded(
-                  child: Text(
-                    potCount == 0
-                        ? 'No pots paired yet'
-                        : '$potCount ${potCount == 1 ? 'plant' : 'plants'} being monitored',
-                    style: const TextStyle(
-                      fontFamily: kFontFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: GGColors.onPrimaryContainer,
+                // Fades out as the bar collapses; at rest there is no room
+                // for two lines.
+                ClipRect(
+                  child: Align(
+                    heightFactor: t,
+                    alignment: Alignment.bottomLeft,
+                    child: Opacity(
+                      opacity: t,
+                      child: Text(
+                        greeting,
+                        style: const TextStyle(
+                          fontFamily: kFontFamily,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: GGColors.textSecondary,
+                        ),
+                      ),
                     ),
+                  ),
+                ),
+                Text(
+                  'GreenGenius',
+                  style: TextStyle(
+                    fontFamily: kFontFamily,
+                    fontSize: 19 + 13 * t,
+                    fontWeight: FontWeight.w800,
+                    color: GGColors.textPrimary,
+                    letterSpacing: -0.4 - 0.6 * t,
+                    height: 1.15,
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
-class _QuickActions extends StatelessWidget {
-  const _QuickActions();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: GGQuickAction(
-            icon: Icons.add_a_photo_rounded,
-            label: 'Identify',
-            onTap: () => _soon(context, 'Plant identification'),
-          ),
-        ),
-        const SizedBox(width: GGSpacing.m - 4),
-        Expanded(
-          child: GGQuickAction(
-            icon: Icons.bluetooth_searching_rounded,
-            label: 'Pair pot',
-            color: GGColors.soil,
-            onTap: () => _soon(context, 'Pot pairing'),
-          ),
-        ),
-        const SizedBox(width: GGSpacing.m - 4),
-        Expanded(
-          child: GGQuickAction(
-            icon: Icons.water_drop_rounded,
-            label: 'Water all',
-            color: GGColors.primary,
-            onTap: () => _soon(context, 'Bulk watering'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // These land in Phases 4 and 6. Saying so is better than a dead button.
-  static void _soon(BuildContext context, String what) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$what is coming in a later build')),
-    );
-  }
-}
-
-class _PotCard extends ConsumerWidget {
-  const _PotCard({required this.pot});
+/// Bento readings for a pot, wired to its snapshot and 48h series.
+class _Readings extends ConsumerWidget {
+  const _Readings({required this.pot});
 
   final Pot pot;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snapshot = ref.watch(potSnapshotProvider(pot.id));
-    final health = snapshot.valueOrNull?.health;
-    final reading = snapshot.valueOrNull?.reading;
-    final status = health?.status ?? 'unknown';
-    final color = GGColors.statusColor(status);
-    final online = snapshot.valueOrNull?.online ?? false;
+    final series = ref.watch(potSeriesProvider(pot.id)).valueOrNull ?? const [];
 
-    return GGTappable(
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => PotDetailScreen(pot: pot)),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(GGSpacing.m + 2),
-        decoration: BoxDecoration(
-          borderRadius: GGRadius.lAll,
-          color: GGColors.surface,
-          border: Border.all(
-            color: status == 'good' || status == 'unknown'
-                ? GGColors.outline
-                : color.withValues(alpha: 0.45),
-          ),
-          boxShadow: ggCardShadow,
-        ),
-        child: Column(
+    final params = snapshot.valueOrNull?.health?.parameters ?? const [];
+    if (params.isEmpty) return const SizedBox.shrink();
+
+    // Last ~12 hourly buckets: enough to show a shape, few enough that the
+    // line stays legible at 44px tall.
+    List<double> tail(double? Function(SeriesPoint) read) {
+      final v = series.map(read).whereType<double>().toList();
+      return v.length <= 12 ? v : v.sublist(v.length - 12);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                _ScoreBadge(
-                  score: health?.score,
-                  color: color,
-                  textColor: GGColors.statusText(status),
-                  container: GGColors.statusContainer(status),
-                ),
-                const SizedBox(width: GGSpacing.m),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        pot.name,
-                        style: const TextStyle(
-                          fontFamily: kFontFamily,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                          color: GGColors.textPrimary,
-                          letterSpacing: -0.3,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        pot.species?.displayName ?? 'Unidentified plant',
-                        style: const TextStyle(
-                          fontFamily: kFontFamily,
-                          fontSize: 13,
-                          color: GGColors.textSecondary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                GGStatusPill(
-                  label: online ? 'Live' : 'Offline',
-                  color: online ? GGColors.primary : GGColors.unknown,
-                  textColor:
-                      online ? GGColors.primaryDark : GGColors.textTertiary,
-                  container: online
-                      ? GGColors.primaryContainer
-                      : GGColors.surfaceMuted,
-                  glowing: online,
-                ),
-              ],
-            ),
-            if (reading != null) ...[
-              const SizedBox(height: GGSpacing.m),
-              Divider(color: Colors.white.withValues(alpha: 0.07), height: 1),
-              const SizedBox(height: GGSpacing.m),
-              Row(
-                children: [
-                  _MiniStat(
-                    icon: Icons.water_drop_rounded,
-                    value: reading.soilPct,
-                    unit: '%',
-                    color: GGColors.soil,
-                  ),
-                  _MiniStat(
-                    icon: Icons.thermostat_rounded,
-                    value: reading.tempC,
-                    unit: '°',
-                    color: GGColors.warning,
-                  ),
-                  _MiniStat(
-                    icon: Icons.wb_sunny_rounded,
-                    value: reading.lux,
-                    unit: 'lx',
-                    color: GGColors.primary,
-                    integer: true,
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ScoreBadge extends StatelessWidget {
-  const _ScoreBadge({
-    required this.score,
-    required this.color,
-    required this.textColor,
-    required this.container,
-  });
-
-  final int? score;
-  final Color color;
-  final Color textColor;
-  final Color container;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 54,
-      height: 54,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: container,
-        border: Border.all(color: color.withValues(alpha: 0.45), width: 1.5),
-      ),
-      alignment: Alignment.center,
-      child: score != null
-          ? Text(
-              '$score',
-              style: TextStyle(
-                fontFamily: kFontFamily,
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                color: textColor,
-                letterSpacing: -0.5,
-              ),
-            )
-          : Icon(Icons.eco_rounded, size: 22, color: color),
-    );
-  }
-}
-
-class _MiniStat extends StatelessWidget {
-  const _MiniStat({
-    required this.icon,
-    required this.value,
-    required this.unit,
-    required this.color,
-    this.integer = false,
-  });
-
-  final IconData icon;
-  final double? value;
-  final String unit;
-  final Color color;
-  final bool integer;
-
-  @override
-  Widget build(BuildContext context) {
-    // A dash, never a fabricated 0 — a missing sensor and a reading of zero
-    // are different things.
-    final text = value == null
-        ? '—'
-        : integer || value!.abs() >= 100
-            ? '${value!.round()}$unit'
-            : '${value!.toStringAsFixed(1)}$unit';
-
-    return Expanded(
-      child: Row(
-        children: [
-          Icon(icon, size: 15, color: color),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              text,
+            const GGSectionHeader(title: 'Right now'),
+            Text(
+              pot.name,
               style: const TextStyle(
                 fontFamily: kFontFamily,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: GGColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: GGColors.textTertiary,
               ),
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: GGSpacing.m),
+        BentoMetrics(
+          parameters: params,
+          soilHistory: tail((p) => p.soilPct),
+          lightHistory: tail((p) => p.lux),
+        ),
+      ],
     );
   }
 }
 
-
-/// Collects loaded snapshots so the attention card can rank across pots.
 class _Attention extends ConsumerWidget {
   const _Attention({required this.pots});
 
