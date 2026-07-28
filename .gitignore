@@ -93,3 +93,9 @@ build/
 dist/
 .DS_Store
 .env*
+
+# Flutter
+app/.dart_tool/
+app/build/
+app/ios/Pods/
+app/.flutter-plugins*
