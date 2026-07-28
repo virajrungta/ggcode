@@ -62,7 +62,7 @@ class _MeshBackgroundState extends State<MeshBackground>
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: GGColors.bgDeep,
+      color: GGColors.bg,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -94,10 +94,13 @@ class _MeshPainter extends CustomPainter {
   // 0.75 diagonal) overlapped into a solid olive field. Glass needs only
   // enough variation behind it to have something to sample; past that, the
   // background stops being depth and starts being colour cast.
+  // Very low alpha on a light surface. The eye picks up a tint over white far
+  // more readily than over near-black, so these are roughly a third of what
+  // the dark version used.
   static const _blobs = [
-    (color: GGColors.volt, alpha: 0.055, radius: 0.50, phase: 0.0),
-    (color: GGColors.cyan, alpha: 0.045, radius: 0.42, phase: 0.38),
-    (color: GGColors.magenta, alpha: 0.028, radius: 0.36, phase: 0.71),
+    (color: GGColors.primary, alpha: 0.055, radius: 0.55, phase: 0.0),
+    (color: GGColors.soil, alpha: 0.030, radius: 0.45, phase: 0.38),
+    (color: GGColors.light, alpha: 0.028, radius: 0.40, phase: 0.71),
   ];
 
   @override

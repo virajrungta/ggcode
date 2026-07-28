@@ -34,17 +34,18 @@ class SettingsScreen extends ConsumerWidget {
                               fontFamily: kFontFamily,
                               fontSize: 28,
                               fontWeight: FontWeight.w800,
-                              color: GGColors.textPrimary,
+                              color: GGColors.onPrimaryContainer,
                               letterSpacing: -0.8,
                               height: 1.1,
                             ),
                           ),
                           Text(
                             'dev-user',
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontFamily: kFontFamily,
                               fontSize: 14,
-                              color: Colors.white.withValues(alpha: 0.65),
+                              fontWeight: FontWeight.w500,
+                              color: GGColors.textSecondary,
                             ),
                           ),
                         ],
@@ -145,9 +146,10 @@ class _Group extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: GGColors.surface1,
+        color: GGColors.surface,
         borderRadius: GGRadius.lAll,
-        border: Border.all(color: GGColors.hairline),
+        border: Border.all(color: GGColors.outline),
+        boxShadow: ggCardShadow,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(children: children),
@@ -160,7 +162,7 @@ class _Divider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      const Divider(height: 1, thickness: 1, color: GGColors.hairline);
+      const Divider(height: 1, thickness: 1, color: GGColors.outline);
 }
 
 class _Row extends StatelessWidget {
@@ -182,7 +184,8 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = warn ? GGColors.amber : GGColors.volt;
+    final accent = warn ? GGColors.warning : GGColors.primary;
+    final valueInk = warn ? GGColors.warningText : GGColors.textSecondary;
 
     return GGTappable(
       onTap: onTap,
@@ -215,7 +218,7 @@ class _Row extends StatelessWidget {
                     fontFamily: kFontFamily,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: warn ? GGColors.amber : GGColors.textSecondary,
+                    color: valueInk,
                   ),
                 ),
               ),

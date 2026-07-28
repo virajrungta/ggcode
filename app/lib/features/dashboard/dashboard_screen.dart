@@ -21,7 +21,7 @@ class DashboardScreen extends ConsumerWidget {
         backgroundColor: Colors.transparent,
         body: RefreshIndicator(
           backgroundColor: GGColors.surface,
-          color: GGColors.volt,
+          color: GGColors.primary,
           onRefresh: () async {
             ref.invalidate(potsProvider);
             await ref.read(potsProvider.future);
@@ -125,10 +125,11 @@ class _Hero extends StatelessWidget {
                 children: [
                   Text(
                     greeting,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontFamily: kFontFamily,
                       fontSize: 15,
-                      color: Colors.white.withValues(alpha: 0.7),
+                      fontWeight: FontWeight.w500,
+                      color: GGColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -138,7 +139,7 @@ class _Hero extends StatelessWidget {
                       fontFamily: kFontFamily,
                       fontSize: 32,
                       fontWeight: FontWeight.w800,
-                      color: GGColors.textPrimary,
+                      color: GGColors.onPrimaryContainer,
                       letterSpacing: -1,
                       height: 1.1,
                     ),
@@ -152,24 +153,24 @@ class _Hero extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(GGSpacing.m - 2),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.06),
+              color: Colors.white.withValues(alpha: 0.7),
               borderRadius: GGRadius.mAll,
-              border: Border.all(color: GGColors.glassBorderTop),
+              border: Border.all(color: Colors.white),
             ),
             child: Row(
               children: [
-                const Icon(Icons.eco_rounded, color: GGColors.volt, size: 20),
+                const Icon(Icons.eco_rounded, color: GGColors.primary, size: 20),
                 const SizedBox(width: GGSpacing.m - 4),
                 Expanded(
                   child: Text(
                     potCount == 0
                         ? 'No pots paired yet'
                         : '$potCount ${potCount == 1 ? 'plant' : 'plants'} being monitored',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontFamily: kFontFamily,
                       fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withValues(alpha: 0.9),
+                      fontWeight: FontWeight.w600,
+                      color: GGColors.onPrimaryContainer,
                     ),
                   ),
                 ),
@@ -201,7 +202,7 @@ class _QuickActions extends StatelessWidget {
           child: GGQuickAction(
             icon: Icons.bluetooth_searching_rounded,
             label: 'Pair pot',
-            color: GGColors.cyan,
+            color: GGColors.soil,
             onTap: () => _soon(context, 'Pot pairing'),
           ),
         ),
@@ -210,7 +211,7 @@ class _QuickActions extends StatelessWidget {
           child: GGQuickAction(
             icon: Icons.water_drop_rounded,
             label: 'Water all',
-            color: GGColors.volt,
+            color: GGColors.primary,
             onTap: () => _soon(context, 'Bulk watering'),
           ),
         ),
@@ -248,15 +249,24 @@ class _PotCard extends ConsumerWidget {
         padding: const EdgeInsets.all(GGSpacing.m + 2),
         decoration: BoxDecoration(
           borderRadius: GGRadius.lAll,
-          color: GGColors.surface1,
-          border: Border.all(color: color.withValues(alpha: 0.30)),
-          boxShadow: ggGlow(color, opacity: 0.12, blur: 22),
+          color: GGColors.surface,
+          border: Border.all(
+            color: status == 'good' || status == 'unknown'
+                ? GGColors.outline
+                : color.withValues(alpha: 0.45),
+          ),
+          boxShadow: ggCardShadow,
         ),
         child: Column(
           children: [
             Row(
               children: [
-                _ScoreBadge(score: health?.score, color: color),
+                _ScoreBadge(
+                  score: health?.score,
+                  color: color,
+                  textColor: GGColors.statusText(status),
+                  container: GGColors.statusContainer(status),
+                ),
                 const SizedBox(width: GGSpacing.m),
                 Expanded(
                   child: Column(
@@ -288,7 +298,12 @@ class _PotCard extends ConsumerWidget {
                 ),
                 GGStatusPill(
                   label: online ? 'Live' : 'Offline',
-                  color: online ? GGColors.volt : GGColors.textTertiary,
+                  color: online ? GGColors.primary : GGColors.unknown,
+                  textColor:
+                      online ? GGColors.primaryDark : GGColors.textTertiary,
+                  container: online
+                      ? GGColors.primaryContainer
+                      : GGColors.surfaceMuted,
                   glowing: online,
                 ),
               ],
@@ -303,19 +318,19 @@ class _PotCard extends ConsumerWidget {
                     icon: Icons.water_drop_rounded,
                     value: reading.soilPct,
                     unit: '%',
-                    color: GGColors.cyan,
+                    color: GGColors.soil,
                   ),
                   _MiniStat(
                     icon: Icons.thermostat_rounded,
                     value: reading.tempC,
                     unit: '°',
-                    color: GGColors.amber,
+                    color: GGColors.warning,
                   ),
                   _MiniStat(
                     icon: Icons.wb_sunny_rounded,
                     value: reading.lux,
                     unit: 'lx',
-                    color: GGColors.volt,
+                    color: GGColors.primary,
                     integer: true,
                   ),
                 ],
@@ -329,10 +344,17 @@ class _PotCard extends ConsumerWidget {
 }
 
 class _ScoreBadge extends StatelessWidget {
-  const _ScoreBadge({required this.score, required this.color});
+  const _ScoreBadge({
+    required this.score,
+    required this.color,
+    required this.textColor,
+    required this.container,
+  });
 
   final int? score;
   final Color color;
+  final Color textColor;
+  final Color container;
 
   @override
   Widget build(BuildContext context) {
@@ -341,8 +363,8 @@ class _ScoreBadge extends StatelessWidget {
       height: 54,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color.withValues(alpha: 0.14),
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
+        color: container,
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 1.5),
       ),
       alignment: Alignment.center,
       child: score != null
@@ -352,7 +374,7 @@ class _ScoreBadge extends StatelessWidget {
                 fontFamily: kFontFamily,
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
-                color: color,
+                color: textColor,
                 letterSpacing: -0.5,
               ),
             )

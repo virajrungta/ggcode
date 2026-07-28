@@ -8,7 +8,7 @@ import 'package:greengenius/features/dashboard/widgets/health_ring.dart';
 import 'package:greengenius/features/dashboard/widgets/metric_tile.dart';
 
 Widget wrap(Widget child) => MaterialApp(
-      theme: GGTheme.dark,
+      theme: GGTheme.light,
       home: Scaffold(body: Center(child: child)),
     );
 
@@ -204,10 +204,28 @@ void main() {
 
   group('status colours', () {
     test('map to the palette', () {
-      expect(GGColors.statusColor('good'), GGColors.volt);
-      expect(GGColors.statusColor('warning'), GGColors.amber);
-      expect(GGColors.statusColor('bad'), GGColors.magenta);
+      expect(GGColors.statusColor('good'), GGColors.good);
+      expect(GGColors.statusColor('warning'), GGColors.warning);
+      expect(GGColors.statusColor('bad'), GGColors.bad);
       expect(GGColors.statusColor('anything-else'), GGColors.unknown);
+    });
+
+    test('status text steps are darker than their mark steps', () {
+      // The mark tier only clears 3:1, which is fine for a dot and not fine
+      // for a 12px label. Every status must expose a darker text step.
+      for (final s in ['good', 'warning', 'bad']) {
+        final mark = GGColors.statusColor(s);
+        final ink = GGColors.statusText(s);
+        expect(ink.computeLuminance(), lessThan(mark.computeLuminance()),
+            reason: '\$s text step must be darker than its mark step');
+      }
+    });
+
+    test('metric hues are distinct from each other', () {
+      final metrics = [
+        GGColors.soil, GGColors.temp, GGColors.humidity, GGColors.light,
+      ];
+      expect(metrics.toSet().length, metrics.length);
     });
   });
 }

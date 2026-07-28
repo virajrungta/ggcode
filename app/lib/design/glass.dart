@@ -66,7 +66,7 @@ class GlassSurface extends StatelessWidget {
             fill ?? GGColors.glassFill,
           ],
         ),
-        border: Border.all(color: GGColors.glassBorderTop, width: 1),
+        border: Border.all(color: GGColors.glassBorder, width: 1.5),
       ),
       child: Padding(padding: padding, child: child),
     );
@@ -86,10 +86,17 @@ class GlassSurface extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: borderRadius,
           boxShadow: [
+            // Tinted, not glowing. On a light surface a coloured glow reads
+            // as a rendering artifact; a soft neutral-ish drop shadow with a
+            // hint of the status hue reads as elevation.
             BoxShadow(
-              color: glowColor!.withValues(alpha: 0.18),
-              blurRadius: 32,
-              spreadRadius: -8,
+              color: glowColor!.withValues(alpha: 0.16),
+              blurRadius: 28,
+              spreadRadius: -10,
+              offset: const Offset(0, 10),
+            ),
+            const BoxShadow(
+              color: Color(0x0F16211A), blurRadius: 14, offset: Offset(0, 4),
             ),
           ],
         ),
@@ -127,15 +134,9 @@ class FauxGlassSurface extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0x14FFFFFF), Color(0x08FFFFFF)],
-        ),
-        border: Border.all(
-          color: borderColor ?? GGColors.glassBorderTop,
-          width: 1,
-        ),
+        color: GGColors.surface,
+        border: Border.all(color: borderColor ?? GGColors.outline),
+        boxShadow: ggCardShadow,
       ),
       child: Padding(padding: padding, child: child),
     );

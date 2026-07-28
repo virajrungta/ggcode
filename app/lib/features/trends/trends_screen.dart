@@ -9,17 +9,28 @@ import '../../design/mesh_background.dart';
 import '../../design/tokens.dart';
 
 enum _Metric {
-  soil('Soil', 'soil_pct', '%', GGColors.cyan, Icons.water_drop_rounded),
-  temp('Temp', 'temp_c', '°C', GGColors.amber, Icons.thermostat_rounded),
-  humidity('Humidity', 'rh', '%', GGColors.magenta, Icons.cloud_rounded),
-  light('Light', 'lux', 'lx', GGColors.volt, Icons.wb_sunny_rounded);
+  soil('Soil', 'soil_pct', '%', GGColors.soil, GGColors.soilText,
+      Icons.water_drop_rounded),
+  temp('Temp', 'temp_c', '°C', GGColors.temp, GGColors.tempText,
+      Icons.thermostat_rounded),
+  humidity('Humidity', 'rh', '%', GGColors.humidity, GGColors.humidityText,
+      Icons.cloud_rounded),
+  light('Light', 'lux', 'lx', GGColors.light, GGColors.lightText,
+      Icons.wb_sunny_rounded);
 
-  const _Metric(this.label, this.key, this.unit, this.color, this.icon);
+  const _Metric(
+      this.label, this.key, this.unit, this.color, this.textColor, this.icon);
 
   final String label;
   final String key;
   final String unit;
+
+  /// Mark tier — the chart line and fill.
   final Color color;
+
+  /// Darker step for labels. Mark colours only clear 3:1.
+  final Color textColor;
+
   final IconData icon;
 
   double? read(SeriesPoint p) => switch (this) {
@@ -109,10 +120,11 @@ class _Body extends ConsumerWidget {
             children: [
               Text(
                 'Last 48 hours',
-                style: TextStyle(
+                style: const TextStyle(
                   fontFamily: kFontFamily,
                   fontSize: 15,
-                  color: Colors.white.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w500,
+                  color: GGColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 2),
@@ -122,7 +134,7 @@ class _Body extends ConsumerWidget {
                   fontFamily: kFontFamily,
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
-                  color: GGColors.textPrimary,
+                  color: GGColors.onPrimaryContainer,
                   letterSpacing: -1,
                   height: 1.1,
                 ),
@@ -200,14 +212,10 @@ class _Chip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: selected
-              ? GGColors.volt.withValues(alpha: 0.16)
-              : Colors.white.withValues(alpha: 0.05),
+          color: selected ? GGColors.primaryContainer : GGColors.surface,
           borderRadius: BorderRadius.circular(GGRadius.round),
           border: Border.all(
-            color: selected
-                ? GGColors.volt.withValues(alpha: 0.5)
-                : GGColors.glassBorderTop,
+            color: selected ? GGColors.primary : GGColors.outline,
           ),
         ),
         child: Text(
@@ -216,7 +224,7 @@ class _Chip extends StatelessWidget {
             fontFamily: kFontFamily,
             fontSize: 13,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? GGColors.volt : GGColors.textSecondary,
+            color: selected ? GGColors.primaryDark : GGColors.textSecondary,
           ),
         ),
       ),
@@ -235,9 +243,9 @@ class _MetricSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: GGColors.surface1,
+        color: GGColors.surfaceMuted,
         borderRadius: GGRadius.mAll,
-        border: Border.all(color: GGColors.hairline),
+        border: Border.all(color: GGColors.outline),
       ),
       child: Row(
         children: [
@@ -250,18 +258,18 @@ class _MetricSelector extends StatelessWidget {
                   duration: GGDuration.fast,
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
-                    color: m == selected
-                        ? m.color.withValues(alpha: 0.16)
-                        : Colors.transparent,
+                    // Selected tab lifts to white rather than tinting: a
+                    // segmented control reads faster when the selection is a
+                    // raised surface, not a colour wash.
+                    color: m == selected ? GGColors.surface : Colors.transparent,
                     borderRadius: GGRadius.sAll,
+                    boxShadow: m == selected ? ggCardShadow : null,
                   ),
                   child: Column(
                     children: [
                       Icon(m.icon,
                           size: 18,
-                          color: m == selected
-                              ? m.color
-                              : GGColors.textTertiary),
+                          color: m == selected ? m.color : GGColors.textTertiary),
                       const SizedBox(height: 4),
                       Text(
                         m.label,
@@ -270,8 +278,9 @@ class _MetricSelector extends StatelessWidget {
                           fontSize: 11,
                           fontWeight:
                               m == selected ? FontWeight.w700 : FontWeight.w500,
-                          color:
-                              m == selected ? m.color : GGColors.textTertiary,
+                          color: m == selected
+                              ? m.textColor
+                              : GGColors.textTertiary,
                         ),
                       ),
                     ],
@@ -306,9 +315,9 @@ class _ChartCard extends StatelessWidget {
         height: 240,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: GGColors.surface1,
+          color: GGColors.surface,
           borderRadius: GGRadius.lAll,
-          border: Border.all(color: GGColors.hairline),
+          border: Border.all(color: GGColors.outline),
         ),
         child: const Text(
           'Not enough data yet',
@@ -330,9 +339,10 @@ class _ChartCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(GGSpacing.l),
       decoration: BoxDecoration(
-        color: GGColors.surface1,
+        color: GGColors.surface,
         borderRadius: GGRadius.lAll,
-        border: Border.all(color: GGColors.hairline),
+        border: Border.all(color: GGColors.outline),
+        boxShadow: ggCardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,22 +402,21 @@ class _ChartCard extends StatelessWidget {
                   drawVerticalLine: false,
                   horizontalInterval: ((max + pad) - (min - pad)) / 3,
                   getDrawingHorizontalLine: (_) => const FlLine(
-                    color: GGColors.hairline,
-                    strokeWidth: 1,
+                    color: GGColors.outline, strokeWidth: 1,
                   ),
                 ),
                 titlesData: const FlTitlesData(show: false),
                 borderData: FlBorderData(show: false),
                 lineTouchData: LineTouchData(
                   touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (_) => GGColors.surface3,
+                    getTooltipColor: (_) => GGColors.textPrimary,
                     tooltipRoundedRadius: 10,
                     getTooltipItems: (spots) => spots
                         .map((s) => LineTooltipItem(
                               '${s.y.toStringAsFixed(1)}${metric.unit}',
                               TextStyle(
                                 fontFamily: kFontFamily,
-                                color: metric.color,
+                                color: Colors.white,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
                               ),
@@ -429,7 +438,7 @@ class _ChartCard extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          metric.color.withValues(alpha: 0.28),
+                          metric.color.withValues(alpha: 0.22),
                           metric.color.withValues(alpha: 0.0),
                         ],
                       ),
@@ -475,9 +484,9 @@ class _DeltaPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: GGColors.surface3,
+        color: GGColors.surfaceMuted,
         borderRadius: BorderRadius.circular(GGRadius.round),
-        border: Border.all(color: GGColors.hairline),
+        border: Border.all(color: GGColors.outline),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -567,11 +576,12 @@ class _Stat extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
           vertical: GGSpacing.m, horizontal: GGSpacing.s + 2),
       decoration: BoxDecoration(
-        color: GGColors.surface1,
+        color: GGColors.surface,
         borderRadius: GGRadius.mAll,
         border: Border.all(
-          color: accent?.withValues(alpha: 0.3) ?? GGColors.hairline,
+          color: accent?.withValues(alpha: 0.45) ?? GGColors.outline,
         ),
+        boxShadow: ggCardShadow,
       ),
       child: Column(
         children: [

@@ -11,11 +11,12 @@ import 'features/trends/trends_screen.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // The app is dark-only by design, so the status bar icons are always light.
+  // Light app, so the status bar needs dark icons. (The two flags are
+  // inverted relative to each other: iOS wants the *bar* brightness.)
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    statusBarBrightness: Brightness.dark,
+    statusBarIconBrightness: Brightness.dark,
+    statusBarBrightness: Brightness.light,
   ));
 
   runApp(const ProviderScope(child: GreenGeniusApp()));
@@ -29,7 +30,7 @@ class GreenGeniusApp extends StatelessWidget {
     return MaterialApp(
       title: 'GreenGenius',
       debugShowCheckedModeBanner: false,
-      theme: GGTheme.dark,
+      theme: GGTheme.light,
       home: const _Root(),
     );
   }

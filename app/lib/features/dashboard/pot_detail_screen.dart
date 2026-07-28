@@ -26,7 +26,7 @@ class PotDetailScreen extends ConsumerWidget {
         appBar: AppBar(title: Text(pot.name)),
         body: RefreshIndicator(
           backgroundColor: GGColors.surface,
-          color: GGColors.volt,
+          color: GGColors.primary,
           onRefresh: () async {
             ref.invalidate(potSnapshotProvider(pot.id));
             await ref.read(potSnapshotProvider(pot.id).future);
@@ -167,7 +167,9 @@ class _LiveBadge extends StatelessWidget {
 
     return GGStatusPill(
       label: label,
-      color: online ? GGColors.volt : GGColors.textTertiary,
+      color: online ? GGColors.primary : GGColors.unknown,
+      textColor: online ? GGColors.primaryDark : GGColors.textTertiary,
+      container: online ? GGColors.primaryContainer : GGColors.surfaceMuted,
       glowing: online,
     );
   }
@@ -193,13 +195,13 @@ class _GuessBanner extends StatelessWidget {
       padding: const EdgeInsets.all(GGSpacing.m),
       decoration: BoxDecoration(
         borderRadius: GGRadius.lAll,
-        color: GGColors.amber.withValues(alpha: 0.08),
-        border: Border.all(color: GGColors.amber.withValues(alpha: 0.3)),
+        color: GGColors.warningContainer,
+        border: Border.all(color: GGColors.warning.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
           const GGIconTile(
-              icon: Icons.info_rounded, color: GGColors.amber, size: 40,
+              icon: Icons.info_rounded, color: GGColors.warning, size: 40,
               iconSize: 18),
           const SizedBox(width: GGSpacing.m - 4),
           const Expanded(
@@ -209,7 +211,8 @@ class _GuessBanner extends StatelessWidget {
               style: TextStyle(
                 fontFamily: kFontFamily,
                 fontSize: 13,
-                color: GGColors.textSecondary,
+                fontWeight: FontWeight.w500,
+                color: GGColors.warningText,
                 height: 1.45,
               ),
             ),
@@ -235,21 +238,15 @@ class _Recommendations extends StatelessWidget {
             padding: const EdgeInsets.all(GGSpacing.m),
             decoration: BoxDecoration(
               borderRadius: GGRadius.mAll,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.07),
-                  Colors.white.withValues(alpha: 0.03),
-                ],
-              ),
-              border: Border.all(color: GGColors.glassBorderTop),
+              color: GGColors.surface,
+              border: Border.all(color: GGColors.outline),
+              boxShadow: ggCardShadow,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Icon(Icons.arrow_forward_rounded,
-                    size: 16, color: GGColors.volt),
+                    size: 16, color: GGColors.primaryDark),
                 const SizedBox(width: GGSpacing.m - 4),
                 Expanded(
                   child: Text(
@@ -282,13 +279,13 @@ class _Notes extends StatelessWidget {
       padding: const EdgeInsets.all(GGSpacing.m),
       decoration: BoxDecoration(
         borderRadius: GGRadius.mAll,
-        color: GGColors.cyan.withValues(alpha: 0.06),
-        border: Border.all(color: GGColors.cyan.withValues(alpha: 0.22)),
+        color: GGColors.soilContainer,
+        border: Border.all(color: GGColors.soil.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const GGCaption('Good to know', color: GGColors.cyan),
+          const GGCaption('Good to know', color: GGColors.soilText),
           const SizedBox(height: GGSpacing.s),
           for (final note in notes)
             Text(
@@ -322,13 +319,13 @@ class _WaterButtonState extends ConsumerState<_WaterButton> {
     setState(() => _busy = true);
     try {
       await ref.read(apiClientProvider).water(widget.potId, durationSeconds: 5);
-      if (mounted) _toast('Watering for 5 seconds', GGColors.volt);
+      if (mounted) _toast('Watering for 5 seconds', GGColors.primary);
       ref.invalidate(potSnapshotProvider(widget.potId));
     } on ApiException catch (e) {
       // The backend's refusals are written for humans — "Soil is already at
       // 88% moisture. Watering now risks root rot." — so show them verbatim
       // rather than flattening to a generic failure.
-      if (mounted) _toast(e.message, e.isConflict ? GGColors.amber : GGColors.bad);
+      if (mounted) _toast(e.message, e.isConflict ? GGColors.warning : GGColors.bad);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -351,7 +348,7 @@ class _WaterButtonState extends ConsumerState<_WaterButton> {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: GGRadius.mAll,
-        boxShadow: _busy ? null : ggGlow(GGColors.volt, opacity: 0.3),
+        boxShadow: _busy ? null : ggCardShadow,
       ),
       child: FilledButton.icon(
         onPressed: _busy ? null : _water,
@@ -360,7 +357,7 @@ class _WaterButtonState extends ConsumerState<_WaterButton> {
                 width: 18,
                 height: 18,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2, color: GGColors.bgDeep),
+                    strokeWidth: 2, color: Colors.white),
               )
             : const Icon(Icons.water_drop_rounded, size: 20),
         label: Text(_busy ? 'Watering…' : 'Water now'),

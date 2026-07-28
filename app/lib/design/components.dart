@@ -20,7 +20,7 @@ class GGIconTile extends StatelessWidget {
   const GGIconTile({
     super.key,
     required this.icon,
-    this.color = GGColors.volt,
+    this.color = GGColors.primary,
     this.size = 48,
     this.iconSize = 22,
     this.filled = true,
@@ -123,8 +123,8 @@ class GGTappable extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: borderRadius,
-        splashColor: GGColors.volt.withValues(alpha: 0.08),
-        highlightColor: GGColors.volt.withValues(alpha: 0.04),
+        splashColor: GGColors.primary.withValues(alpha: 0.08),
+        highlightColor: GGColors.primary.withValues(alpha: 0.04),
         child: child,
       ),
     );
@@ -137,7 +137,7 @@ class GGQuickAction extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
-    this.color = GGColors.volt,
+    this.color = GGColors.primary,
     this.onTap,
   });
 
@@ -155,15 +155,9 @@ class GGQuickAction extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: GGSpacing.m),
         decoration: BoxDecoration(
           borderRadius: GGRadius.lAll,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withValues(alpha: 0.08),
-              Colors.white.withValues(alpha: 0.03),
-            ],
-          ),
-          border: Border.all(color: GGColors.glassBorderTop),
+          color: GGColors.surface,
+          border: Border.all(color: GGColors.outline),
+          boxShadow: ggCardShadow,
         ),
         child: Column(
           children: [
@@ -192,11 +186,21 @@ class GGStatusPill extends StatelessWidget {
     super.key,
     required this.label,
     required this.color,
+    this.textColor,
+    this.container,
     this.glowing = false,
   });
 
   final String label;
+
+  /// Mark tier — the dot and the border.
   final Color color;
+
+  /// Darker step for the label. The mark colour is only guaranteed 3:1, which
+  /// is fine for a dot and not fine for 12px text.
+  final Color? textColor;
+
+  final Color? container;
   final bool glowing;
 
   @override
@@ -205,9 +209,9 @@ class GGStatusPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
           horizontal: GGSpacing.m, vertical: GGSpacing.s - 1),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: container ?? color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(GGRadius.round),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -219,7 +223,7 @@ class GGStatusPill extends StatelessWidget {
               color: color,
               shape: BoxShape.circle,
               boxShadow: glowing
-                  ? [BoxShadow(color: color.withValues(alpha: 0.8), blurRadius: 7)]
+                  ? [BoxShadow(color: color.withValues(alpha: 0.5), blurRadius: 5)]
                   : null,
             ),
           ),
@@ -229,8 +233,8 @@ class GGStatusPill extends StatelessWidget {
             style: TextStyle(
               fontFamily: kFontFamily,
               fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: color,
+              fontWeight: FontWeight.w700,
+              color: textColor ?? color,
             ),
           ),
         ],
@@ -248,7 +252,7 @@ class GGHeroHeader extends StatelessWidget {
   const GGHeroHeader({
     super.key,
     required this.child,
-    this.accent = GGColors.volt,
+    this.accent = GGColors.primary,
   });
 
   final Widget child;
@@ -265,17 +269,17 @@ class GGHeroHeader extends StatelessWidget {
         GGSpacing.xl,
       ),
       decoration: BoxDecoration(
+        // A soft tinted panel rather than a saturated block. Nest-style
+        // headers carry brand through a pale wash, not through a colour field
+        // strong enough to need white text.
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [GGColors.heroFrom, GGColors.heroTo],
+          colors: [Color(0xFFE7F3EC), Color(0xFFD6EADE)],
         ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(GGRadius.hero),
           bottomRight: Radius.circular(GGRadius.hero),
-        ),
-        border: Border(
-          bottom: BorderSide(color: accent.withValues(alpha: 0.18)),
         ),
       ),
       child: child,

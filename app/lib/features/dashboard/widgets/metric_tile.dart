@@ -30,13 +30,14 @@ class MetricTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(GGSpacing.m),
       decoration: BoxDecoration(
-        color: GGColors.surface1,
+        color: GGColors.surface,
         borderRadius: GGRadius.lAll,
         border: Border.all(
-          color: parameter.status == 'good'
-              ? GGColors.hairline
-              : color.withValues(alpha: 0.35),
+          color: parameter.status == 'good' || parameter.status == 'unknown'
+              ? GGColors.outline
+              : color.withValues(alpha: 0.45),
         ),
+        boxShadow: ggCardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,7 +142,7 @@ class _BandIndicator extends StatelessWidget {
                 height: 4,
                 margin: const EdgeInsets.only(top: 1),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: GGColors.surfaceSunken,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -152,7 +153,7 @@ class _BandIndicator extends StatelessWidget {
                 child: Container(
                   height: 4,
                   decoration: BoxDecoration(
-                    color: GGColors.volt.withValues(alpha: 0.22),
+                    color: GGColors.primary.withValues(alpha: 0.28),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),

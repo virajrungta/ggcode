@@ -42,7 +42,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: GGColors.bgDeep,
+      backgroundColor: GGColors.bg,
       extendBody: true,
       body: IndexedStack(
         index: _index,
@@ -76,8 +76,8 @@ class _NavBar extends StatelessWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color: GGColors.surface2,
-        border: Border(top: BorderSide(color: GGColors.hairline)),
+        color: GGColors.surface,
+        border: Border(top: BorderSide(color: GGColors.outline)),
       ),
       padding: EdgeInsets.only(bottom: bottomInset, top: GGSpacing.s),
       child: Row(
@@ -109,12 +109,12 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? GGColors.volt : GGColors.textTertiary;
+    final color = selected ? GGColors.primary : GGColors.textTertiary;
 
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(GGRadius.m),
-      splashColor: GGColors.volt.withValues(alpha: 0.08),
+      splashColor: GGColors.primary.withValues(alpha: 0.08),
       highlightColor: Colors.transparent,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: GGSpacing.s),
@@ -129,16 +129,11 @@ class _NavItem extends StatelessWidget {
               height: 3,
               width: selected ? 22 : 0,
               decoration: BoxDecoration(
-                color: GGColors.volt,
+                color: GGColors.primary,
                 borderRadius: BorderRadius.circular(2),
-                boxShadow: selected
-                    ? [
-                        BoxShadow(
-                          color: GGColors.volt.withValues(alpha: 0.6),
-                          blurRadius: 8,
-                        ),
-                      ]
-                    : null,
+                // No glow on light: it muddies the indicator instead of
+                // lifting it.
+                boxShadow: null,
               ),
             ),
             const SizedBox(height: GGSpacing.s - 2),

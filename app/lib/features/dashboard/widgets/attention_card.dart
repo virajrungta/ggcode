@@ -38,10 +38,10 @@ class AttentionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(GGSpacing.m + 2),
       decoration: BoxDecoration(
-        color: GGColors.surface1,
+        color: GGColors.surface,
         borderRadius: GGRadius.lAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-        boxShadow: ggGlow(color, opacity: 0.14, blur: 24),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+        boxShadow: ggCardShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +61,7 @@ class AttentionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GGCaption('Needs attention', color: color),
+                    GGCaption('Needs attention', color: GGColors.statusText(worst.health.status)),
                     const SizedBox(height: 3),
                     Text(
                       worst.pot.name,
@@ -82,7 +82,7 @@ class AttentionCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: GGColors.surface3,
+                    color: GGColors.surfaceMuted,
                     borderRadius: BorderRadius.circular(GGRadius.round),
                   ),
                   child: Text(
@@ -114,7 +114,7 @@ class AttentionCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Icon(Icons.arrow_forward_rounded,
-                    size: 15, color: GGColors.volt),
+                    size: 15, color: GGColors.primary),
                 const SizedBox(width: GGSpacing.s),
                 Expanded(
                   child: Text(
@@ -146,9 +146,10 @@ class _AllGood extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(GGSpacing.m + 2),
       decoration: BoxDecoration(
-        color: GGColors.surface1,
+        color: GGColors.surface,
         borderRadius: GGRadius.lAll,
-        border: Border.all(color: GGColors.volt.withValues(alpha: 0.28)),
+        border: Border.all(color: GGColors.primary.withValues(alpha: 0.4)),
+        boxShadow: ggCardShadow,
       ),
       child: Row(
         children: [
@@ -159,7 +160,7 @@ class _AllGood extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const GGCaption('All good', color: GGColors.volt),
+                const GGCaption('All good', color: GGColors.primaryDark),
                 const SizedBox(height: 3),
                 Text(
                   count == 0
