@@ -99,3 +99,6 @@ app/.dart_tool/
 app/build/
 app/ios/Pods/
 app/.flutter-plugins*
+
+# Local dev databases
+backend/*.db
