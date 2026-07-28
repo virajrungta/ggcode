@@ -1,11 +1,181 @@
-#include "NimBLEDevice.h"
-#include "nvs_flash.h"
-#include "esp_log.h"
+// GreenGenius pot firmware.
+//
+// Replaces the original bring-up sketch, which advertised a fixed name with a
+// hardcoded string on a reserved 16-bit UUID. See contracts/ble_gatt.md.
 
-static const char* TAG = "GG_HARD";
+#include <cstdio>
+#include <cstring>
+
+#include "NimBLEDevice.h"
+#include "esp_log.h"
+#include "esp_mac.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "nvs_flash.h"
+
+extern "C" {
+#include "gg_config.h"
+#include "gg_pump.h"
+#include "gg_sensors.h"
+}
+
+static const char *TAG = "gg_main";
+
+// contracts/ble_gatt.md
+static constexpr const char *SVC_UUID        = "67670000-9622-433e-b3ab-bd248af9434c";
+static constexpr const char *CHR_DEVICE_INFO = "67670001-9622-433e-b3ab-bd248af9434c";
+static constexpr const char *CHR_TELEMETRY   = "67670002-9622-433e-b3ab-bd248af9434c";
+static constexpr const char *CHR_CLAIM_TOKEN = "67670003-9622-433e-b3ab-bd248af9434c";
+static constexpr const char *CHR_CALIBRATION = "67670004-9622-433e-b3ab-bd248af9434c";
+static constexpr const char *CHR_COMMAND     = "67670005-9622-433e-b3ab-bd248af9434c";
+
+static char s_device_id[13] = {0};
+static NimBLECharacteristic *s_telemetry_chr = nullptr;
+static volatile bool s_live_subscribed = false;
+
+// --- identity ------------------------------------------------------------
+
+static void derive_device_id() {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    snprintf(s_device_id, sizeof(s_device_id), "%02x%02x%02x%02x%02x%02x",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+/* A fleet-wide passkey (the original firmware used a literal 123456) means
+ * anyone who has seen one pot can pair with every pot. Deriving it from the
+ * MAC gives each unit a distinct value; production should burn a random
+ * passkey into eFuse at manufacture and print it on the base of the pot. */
+static uint32_t derive_passkey() {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    uint32_t k = (uint32_t)mac[2] << 24 | (uint32_t)mac[3] << 16 |
+                 (uint32_t)mac[4] << 8  | (uint32_t)mac[5];
+    return 100000 + (k % 900000);  // always 6 digits
+}
+
+// --- BLE callbacks -------------------------------------------------------
+
+static void fill_telemetry(gg_telemetry_t *out) {
+    gg_reading_t r;
+    gg_sensors_read(&r);
+
+    uint8_t flags = gg_pump_is_running() ? GG_FLAG_PUMP_ON : 0;
+    if (gg_pump_reservoir_empty()) flags |= GG_FLAG_RESERVOIR_LOW;
+
+    gg_sensors_pack(&r, (uint32_t)(esp_timer_get_time() / 1000000), flags, out);
+}
+
+class TelemetryCallbacks : public NimBLECharacteristicCallbacks {
+    void onSubscribe(NimBLECharacteristic *, NimBLEConnInfo &, uint16_t subValue) override {
+        s_live_subscribed = (subValue > 0);
+        ESP_LOGI(TAG, "live telemetry %s", s_live_subscribed ? "subscribed" : "unsubscribed");
+    }
+
+    void onRead(NimBLECharacteristic *chr, NimBLEConnInfo &) override {
+        gg_telemetry_t packed;
+        fill_telemetry(&packed);
+        chr->setValue((uint8_t *)&packed, sizeof(packed));
+    }
+};
+
+class CalibrationCallbacks : public NimBLECharacteristicCallbacks {
+    void onRead(NimBLECharacteristic *chr, NimBLEConnInfo &) override {
+        gg_calibration_t cal;
+        gg_sensors_get_calibration(&cal);
+
+        uint16_t raw = 0;
+        gg_sensors_read_soil_raw(&raw);
+
+        char json[192];
+        snprintf(json, sizeof(json),
+                 "{\"soil_air_raw\":%u,\"soil_water_raw\":%u,"
+                 "\"calibrated_at\":%lu,\"current_raw\":%u}",
+                 cal.soil_air_raw, cal.soil_water_raw,
+                 (unsigned long)cal.calibrated_at, raw);
+        chr->setValue((uint8_t *)json, strlen(json));
+    }
+
+    void onWrite(NimBLECharacteristic *chr, NimBLEConnInfo &) override {
+        std::string v = chr->getValue();
+        unsigned air = 0, water = 0;
+        unsigned long at = 0;
+
+        // Minimal parse - the app sends exactly this shape.
+        if (sscanf(v.c_str(),
+                   "{\"soil_air_raw\":%u,\"soil_water_raw\":%u,\"calibrated_at\":%lu",
+                   &air, &water, &at) < 2) {
+            ESP_LOGW(TAG, "unparseable calibration write");
+            return;
+        }
+
+        gg_calibration_t cal = {
+            .soil_air_raw = (uint16_t)air,
+            .soil_water_raw = (uint16_t)water,
+            .calibrated_at = (uint32_t)at,
+        };
+        // set_calibration rejects inverted or implausibly narrow spans.
+        esp_err_t err = gg_sensors_set_calibration(&cal);
+        ESP_LOGI(TAG, "calibration write: %s", esp_err_to_name(err));
+    }
+};
+
+class CommandCallbacks : public NimBLECharacteristicCallbacks {
+    void onWrite(NimBLECharacteristic *chr, NimBLEConnInfo &) override {
+        std::string v = chr->getValue();
+        ESP_LOGI(TAG, "BLE command: %s", v.c_str());
+
+        if (v.find("\"pump\"") != std::string::npos) {
+            unsigned duration = 0;
+            const char *p = strstr(v.c_str(), "duration_s");
+            if (p) sscanf(p, "duration_s\":%u", &duration);
+
+            /* Proximity is not authorization to bypass the interlocks. A BLE
+             * command runs through exactly the same checks as a cloud one. */
+            gg_pump_result_t res = gg_pump_start(duration * 1000, "ble");
+            ESP_LOGI(TAG, "pump request -> %s", gg_pump_result_str(res));
+        }
+    }
+};
+
+// --- pump events ---------------------------------------------------------
+
+static void on_pump_event(const char *reason, uint32_t duration_ms) {
+    // Phase 5 forwards these to gg/v1/{id}/event; logged until then.
+    ESP_LOGI(TAG, "pump event: %s (%lums)", reason, (unsigned long)duration_ms);
+}
+
+// --- telemetry task ------------------------------------------------------
+
+static void telemetry_task(void *) {
+    TickType_t last = xTaskGetTickCount();
+
+    for (;;) {
+        gg_telemetry_t packed;
+        fill_telemetry(&packed);
+
+        if (s_telemetry_chr && s_live_subscribed) {
+            s_telemetry_chr->setValue((uint8_t *)&packed, sizeof(packed));
+            s_telemetry_chr->notify();
+        }
+
+        ESP_LOGI(TAG, "uptime=%lus soil=%u temp=%d rh=%u lux=%lu flags=0x%02X",
+                 (unsigned long)packed.uptime_s, packed.soil_pct_x100,
+                 packed.temp_c_x100, packed.rh_x100,
+                 (unsigned long)packed.lux_x10, packed.flags);
+
+        /* Fast cadence only while someone is watching. Holding 1Hz plus a 15ms
+         * connection interval continuously is a real battery cost on the phone. */
+        TickType_t period = pdMS_TO_TICKS(
+            s_live_subscribed ? GG_LIVE_INTERVAL_MS : GG_SAMPLE_INTERVAL_MS);
+        vTaskDelayUntil(&last, period);
+    }
+}
+
+// --- entry point ---------------------------------------------------------
 
 extern "C" void app_main() {
-    // 1. Initialize NVS (Always needed for Bluetooth memory)
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -13,66 +183,79 @@ extern "C" void app_main() {
     }
     ESP_ERROR_CHECK(ret);
 
-    ESP_LOGI(TAG, "Starting NimBLE C++ Server for gghard...");
+    derive_device_id();
+    ESP_LOGI(TAG, "GreenGenius %s (%s) device_id=%s",
+             GG_FW_VERSION, GG_HW_REVISION, s_device_id);
 
-    // 2. Initialize the NimBLE Device (This replaces nimble_port_init)
-    NimBLEDevice::init("Green Genius");
-    NimBLEDevice::setSecurityPasskey(123456);
-    NimBLEDevice::setSecurityAuth(true, true, true); // Bonding, MITM protection, and Secure Connections
-    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY); // Tell the phone we can show a PIN
-   
-    NimBLEDevice::getAdvertising()->setName("Green Genius");
-    
-    
+    /* Pump first: it must be driven low before anything else can fail and
+     * leave it energised. */
+    ESP_ERROR_CHECK(gg_pump_init(on_pump_event));
+    ESP_ERROR_CHECK(gg_sensors_init());
 
-    // Force the name into the GAP service the "Easy" way
-    NimBLEDevice::setDeviceName("Green Genius");
-    
-    // 3. Create the BLE Server
-    NimBLEServer* pServer = NimBLEDevice::createServer();
-    pServer->start();
-    // 4. Create a Service (UUID: ABCD)
-    NimBLEService* pService = pServer->createService("ABCD");
-
-    // 5. Create a Characteristic (UUID: 1234)
-    NimBLECharacteristic* pCharacteristic = pService->createCharacteristic(
-                                "1234",
-                                NIMBLE_PROPERTY::READ | 
-                                NIMBLE_PROPERTY::WRITE |
-                                NIMBLE_PROPERTY::READ_ENC | // Requires Encryption/Bonding
-                                NIMBLE_PROPERTY::WRITE_ENC
-                             );
-
-    // Set the initial value your phone will read
-    pCharacteristic->setValue("Hello from Ayaan's MacBook!");
-
-    // 6. Start the service
-    pService->start();
-    // ... (after pService->start())
-    // 7. Start Advertising (Making it visible)
-    // 7. Start Advertising
-    NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-    
-    // We create a "Packet" and manually fill it
-    NimBLEAdvertisementData advData;
-    advData.setName("Green Genius");
-    advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
-    pAdvertising->setAppearance(0x0000);
-    
-    // Set the data and start
-    pAdvertising->setAdvertisementData(advData);
-    pAdvertising->start();
-
-    ESP_LOGI(TAG, "Bluetooth is LIVE. Scanning for GG_HARD_ESP32...");
-
-    
-    ESP_LOGI(TAG, "Broadcasting with Scan Response...");
-    // 7. Start Advertising (So your phone can find it)
-    
-
-    ESP_LOGI(TAG, "Bluetooth is LIVE. Open nRF Connect on your phone.");
-
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000)); 
+    if (!gg_sensors_is_calibrated()) {
+        ESP_LOGW(TAG, "soil probe is NOT calibrated - readings suppressed "
+                      "until the app completes the air/water calibration");
     }
+
+    // Per-device name so multiple pots are distinguishable in the app's scan
+    // list. The original firmware advertised "Green Genius" on every unit.
+    char adv_name[16];
+    snprintf(adv_name, sizeof(adv_name), "GG-%s", s_device_id + 6);
+
+    NimBLEDevice::init(adv_name);
+    NimBLEDevice::setSecurityPasskey(derive_passkey());
+    NimBLEDevice::setSecurityAuth(true, true, true);  // bond, MITM, SC
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+    ESP_LOGI(TAG, "pairing passkey: %06lu", (unsigned long)derive_passkey());
+
+    NimBLEServer *server = NimBLEDevice::createServer();
+    NimBLEService *svc = server->createService(SVC_UUID);
+
+    // Unencrypted on purpose: the app needs to read this before pairing to
+    // decide between the provisioning and claim flows. It carries no secrets.
+    NimBLECharacteristic *info = svc->createCharacteristic(
+        CHR_DEVICE_INFO, NIMBLE_PROPERTY::READ);
+    {
+        char json[192];
+        snprintf(json, sizeof(json),
+                 "{\"device_id\":\"%s\",\"fw\":\"%s\",\"hw\":\"%s\","
+                 "\"model\":\"%s\",\"prov\":false}",
+                 s_device_id, GG_FW_VERSION, GG_HW_REVISION, GG_MODEL);
+        info->setValue((uint8_t *)json, strlen(json));
+    }
+
+    s_telemetry_chr = svc->createCharacteristic(
+        CHR_TELEMETRY,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY | NIMBLE_PROPERTY::READ_ENC);
+    s_telemetry_chr->setCallbacks(new TelemetryCallbacks());
+
+    NimBLECharacteristic *calib = svc->createCharacteristic(
+        CHR_CALIBRATION,
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE |
+        NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::WRITE_ENC);
+    calib->setCallbacks(new CalibrationCallbacks());
+
+    NimBLECharacteristic *cmd = svc->createCharacteristic(
+        CHR_COMMAND, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC);
+    cmd->setCallbacks(new CommandCallbacks());
+
+    // Claim token is issued by gg_net once the device reaches the backend;
+    // exposed here so the characteristic exists from first boot.
+    svc->createCharacteristic(
+        CHR_CLAIM_TOKEN, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC);
+
+    svc->start();
+    server->start();
+
+    NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
+    NimBLEAdvertisementData data;
+    data.setName(adv_name);
+    data.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+    data.addServiceUUID(SVC_UUID);
+    adv->setAdvertisementData(data);
+    adv->start();
+
+    ESP_LOGI(TAG, "advertising as %s", adv_name);
+
+    xTaskCreate(telemetry_task, "telemetry", 4096, nullptr, 5, nullptr);
 }
