@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "struct_format_python": "<IhHHIB",
+  "size_bytes": 15,
+  "note": "Little-endian packed gg_telemetry_t. Both backend and app test suites decode these.",
+  "vectors": [
+    {
+      "name": "nominal",
+      "description": "Healthy pot, mid-morning, recently watered",
+      "hex": "100e000069087012000f3930000030",
+      "decoded": {
+        "uptime_s": 3600,
+        "temp_c_x100": 2153,
+        "rh_x100": 4720,
+        "soil_pct_x100": 3840,
+        "lux_x10": 12345,
+        "flags": 48
+      }
+    },
+    {
+      "name": "all_zero",
+      "description": "Fresh boot, sensors not yet read",
+      "hex": "000000000000000000000000000000",
+      "decoded": {
+        "uptime_s": 0,
+        "temp_c_x100": 0,
+        "rh_x100": 0,
+        "soil_pct_x100": 0,
+        "lux_x10": 0,
+        "flags": 0
+      }
+    },
+    {
+      "name": "freezing",
+      "description": "Sub-zero ambient - exercises the signed temp field",
+      "hex": "805101001efb8c237c150300000010",
+      "decoded": {
+        "uptime_s": 86400,
+        "temp_c_x100": -1250,
+        "rh_x100": 9100,
+        "soil_pct_x100": 5500,
+        "lux_x10": 3,
+        "flags": 16
+      }
+    },
+    {
+      "name": "pump_running",
+      "description": "Pump on, soil still dry",
+      "hex": "201c0000d007a00fb0042003000001",
+      "decoded": {
+        "uptime_s": 7200,
+        "temp_c_x100": 2000,
+        "rh_x100": 4000,
+        "soil_pct_x100": 1200,
+        "lux_x10": 800,
+        "flags": 1
+      }
+    },
+    {
+      "name": "sensor_fault",
+      "description": "I2C temp+rh failed, soil and lux OK",
+      "hex": "780000000080ffff04102823000004",
+      "decoded": {
+        "uptime_s": 120,
+        "temp_c_x100": -32768,
+        "rh_x100": 65535,
+        "soil_pct_x100": 4100,
+        "lux_x10": 9000,
+        "flags": 4
+      }
+    },
+    {
+      "name": "uncalibrated",
+      "description": "Never calibrated - soil untrustworthy",
+      "hex": "3c000000980888130000f401000008",
+      "decoded": {
+        "uptime_s": 60,
+        "temp_c_x100": 2200,
+        "rh_x100": 5000,
+        "soil_pct_x100": 0,
+        "lux_x10": 500,
+        "flags": 8
+      }
+    },
+    {
+      "name": "saturated",
+      "description": "Overwatered, reservoir low",
+      "hex": "9f8601006009401f1027c8af000002",
+      "decoded": {
+        "uptime_s": 99999,
+        "temp_c_x100": 2400,
+        "rh_x100": 8000,
+        "soil_pct_x100": 10000,
+        "lux_x10": 45000,
+        "flags": 2
+      }
+    },
+    {
+      "name": "max_values",
+      "description": "Field boundary check",
+      "hex": "ffffffffff7ffeff1027feffffff3f",
+      "decoded": {
+        "uptime_s": 4294967295,
+        "temp_c_x100": 32767,
+        "rh_x100": 65534,
+        "soil_pct_x100": 10000,
+        "lux_x10": 4294967294,
+        "flags": 63
+      }
+    }
+  ]
+}

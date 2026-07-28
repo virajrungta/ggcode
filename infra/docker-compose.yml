@@ -1,0 +1,106 @@
+# Local development stack. Not a production topology — see infra/README.md.
+# Every credential in this file is a throwaway dev value.
+
+name: greengenius
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: gg
+      POSTGRES_PASSWORD: gg_dev_only
+      POSTGRES_DB: greengenius
+    ports: ["5432:5432"]
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gg -d greengenius"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    ports: ["6379:6379"]
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  broker:
+    image: emqx/emqx:5.8.2
+    ports:
+      - "1883:1883"    # MQTT (dev only — TLS 8883 in production)
+      - "18083:18083"  # dashboard, admin/public
+    environment:
+      EMQX_ALLOW_ANONYMOUS: "true"   # dev only; see note below
+      EMQX_NODE__COOKIE: gg_dev_cookie
+    volumes:
+      - broker_data:/opt/emqx/data
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: gg
+      MINIO_ROOT_PASSWORD: gg_dev_only
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      GG_DATABASE_URL: postgresql+asyncpg://gg:gg_dev_only@db:5432/greengenius
+      GG_REDIS_URL: redis://redis:6379/0
+      GG_MQTT_HOST: broker
+      GG_MQTT_PORT: "1883"
+      GG_MQTT_TLS: "false"
+      GG_SIMULATE: "1"
+      GG_AUTH_MODE: dev
+    ports: ["8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      broker: {condition: service_healthy}
+    volumes:
+      - ../backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  ingest:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      GG_DATABASE_URL: postgresql+asyncpg://gg:gg_dev_only@db:5432/greengenius
+      GG_REDIS_URL: redis://redis:6379/0
+      GG_MQTT_HOST: broker
+      GG_MQTT_PORT: "1883"
+      GG_MQTT_TLS: "false"
+    depends_on:
+      db: {condition: service_healthy}
+      broker: {condition: service_healthy}
+    volumes:
+      - ../backend:/app
+    command: python -m app.workers.ingest
+
+volumes:
+  db_data:
+  broker_data:
+  minio_data:

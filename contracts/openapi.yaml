@@ -1,0 +1,1206 @@
+openapi: 3.1.0
+info:
+  title: GreenGenius API
+  description: Backend for the GreenGenius AI plant pot.
+  version: 1.0.0
+paths:
+  /v1/devices/claim:
+    post:
+      tags:
+      - devices
+      summary: Claim Device
+      description: 'Bind a physical pot to the calling user.
+
+
+        The app reads `claim_code` from the device over an encrypted BLE link, so
+
+        possessing a valid code proves physical proximity. Codes expire after
+
+        `claim_code_ttl_seconds` and are single-use.'
+      operationId: claim_device_v1_devices_claim_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/devices:
+    get:
+      tags:
+      - devices
+      summary: List Devices
+      operationId: list_devices_v1_devices_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceOut'
+                title: Response List Devices V1 Devices Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots:
+    get:
+      tags:
+      - pots
+      summary: List Pots
+      operationId: list_pots_v1_pots_get
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PotOut'
+                title: Response List Pots V1 Pots Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - pots
+      summary: Create Pot
+      operationId: create_pot_v1_pots_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PotCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PotOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots/{pot_id}:
+    get:
+      tags:
+      - pots
+      summary: Get Pot
+      operationId: get_pot_v1_pots__pot_id__get
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PotOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - pots
+      summary: Update Pot
+      operationId: update_pot_v1_pots__pot_id__patch
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PotUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PotOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - pots
+      summary: Delete Pot
+      operationId: delete_pot_v1_pots__pot_id__delete
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots/{pot_id}/latest:
+    get:
+      tags:
+      - pots
+      summary: Get Latest
+      operationId: get_latest_v1_pots__pot_id__latest_get
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LatestOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots/{pot_id}/readings:
+    get:
+      tags:
+      - pots
+      summary: Get Readings
+      description: 'Bucketed time series.
+
+
+        Aggregation happens in SQL, not Python: a 90-day window at 60 s sampling is
+
+        ~130k rows, and shipping those to the API process to average them would be
+
+        both slow and pointless.
+
+
+        On Postgres this targets Timescale''s `time_bucket`; the SQLite path uses an
+
+        epoch-division expression so local development produces the same shape.'
+      operationId: get_readings_v1_pots__pot_id__readings_get
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: bucket
+        in: query
+        required: false
+        schema:
+          enum:
+          - 5m
+          - 1h
+          - 1d
+          type: string
+          default: 1h
+          title: Bucket
+      - name: hours
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 2160
+          minimum: 1
+          default: 24
+          title: Hours
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeriesOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots/{pot_id}/health:
+    get:
+      tags:
+      - pots
+      summary: Get Health
+      operationId: get_health_v1_pots__pot_id__health_get
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots/{pot_id}/water:
+    post:
+      tags:
+      - commands
+      summary: Water Pot
+      operationId: water_pot_v1_pots__pot_id__water_post
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaterRequest'
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandOut'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots/{pot_id}/commands:
+    get:
+      tags:
+      - commands
+      summary: List Commands
+      operationId: list_commands_v1_pots__pot_id__commands_get
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+          title: Limit
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CommandOut'
+                title: Response List Commands V1 Pots  Pot Id  Commands Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/pots/{pot_id}/identify:
+    post:
+      tags:
+      - identify
+      summary: Identify Plant
+      description: 'Identify the plant in a photo and bind the species to the pot.
+
+
+        Multipart rather than base64-in-JSON (what the old endpoint did): base64
+
+        inflates every upload by 33% and forces the whole image into memory as a
+
+        string on both client and server.'
+      operationId: identify_plant_v1_pots__pot_id__identify_post
+      parameters:
+      - name: pot_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Pot Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      - name: x-dev-user
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Dev-User
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_identify_plant_v1_pots__pot_id__identify_post'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentifyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      tags:
+      - meta
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Health Health Get
+components:
+  schemas:
+    Body_identify_plant_v1_pots__pot_id__identify_post:
+      properties:
+        file:
+          type: string
+          contentMediaType: application/octet-stream
+          title: File
+      type: object
+      required:
+      - file
+      title: Body_identify_plant_v1_pots__pot_id__identify_post
+    ClaimRequest:
+      properties:
+        claim_code:
+          type: string
+          maxLength: 32
+          minLength: 4
+          title: Claim Code
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+          - type: 'null'
+          title: Name
+      type: object
+      required:
+      - claim_code
+      title: ClaimRequest
+    ClaimResponse:
+      properties:
+        device_id:
+          type: string
+          title: Device Id
+        pot_id:
+          type: string
+          title: Pot Id
+        mqtt_username:
+          type: string
+          title: Mqtt Username
+        mqtt_password:
+          type: string
+          title: Mqtt Password
+        mqtt_host:
+          type: string
+          title: Mqtt Host
+        mqtt_port:
+          type: integer
+          title: Mqtt Port
+        mqtt_tls:
+          type: boolean
+          title: Mqtt Tls
+      type: object
+      required:
+      - device_id
+      - pot_id
+      - mqtt_username
+      - mqtt_password
+      - mqtt_host
+      - mqtt_port
+      - mqtt_tls
+      title: ClaimResponse
+    CommandOut:
+      properties:
+        id:
+          type: string
+          title: Id
+        device_id:
+          type: string
+          title: Device Id
+        op:
+          type: string
+          title: Op
+        args:
+          additionalProperties: true
+          type: object
+          title: Args
+        state:
+          type: string
+          title: State
+        issued_at:
+          type: string
+          format: date-time
+          title: Issued At
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        acked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Acked At
+        result:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Result
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - id
+      - device_id
+      - op
+      - args
+      - state
+      - issued_at
+      - expires_at
+      - acked_at
+      - result
+      - error
+      title: CommandOut
+    DeviceOut:
+      properties:
+        id:
+          type: string
+          title: Id
+        model:
+          type: string
+          title: Model
+        fw_version:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Fw Version
+        online:
+          type: boolean
+          title: Online
+        last_seen_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Seen At
+      type: object
+      required:
+      - id
+      - model
+      - fw_version
+      - online
+      - last_seen_at
+      title: DeviceOut
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HealthOut:
+      properties:
+        status:
+          type: string
+          enum:
+          - good
+          - warning
+          - bad
+          - unknown
+          title: Status
+        score:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Score
+        confidence:
+          type: string
+          enum:
+          - species
+          - genus
+          - default
+          title: Confidence
+        profile_source:
+          type: string
+          title: Profile Source
+        parameters:
+          items:
+            $ref: '#/components/schemas/ParameterOut'
+          type: array
+          title: Parameters
+        issues:
+          items:
+            type: string
+          type: array
+          title: Issues
+        recommendations:
+          items:
+            type: string
+          type: array
+          title: Recommendations
+        notes:
+          items:
+            type: string
+          type: array
+          title: Notes
+      type: object
+      required:
+      - status
+      - score
+      - confidence
+      - profile_source
+      - parameters
+      - issues
+      - recommendations
+      - notes
+      title: HealthOut
+    IdentifyResponse:
+      properties:
+        identified:
+          type: boolean
+          title: Identified
+        top:
+          anyOf:
+          - $ref: '#/components/schemas/IdentifySuggestion'
+          - type: 'null'
+        suggestions:
+          items:
+            $ref: '#/components/schemas/IdentifySuggestion'
+          type: array
+          title: Suggestions
+        confidence:
+          type: number
+          title: Confidence
+        species_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Species Id
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
+      type: object
+      required:
+      - identified
+      - top
+      - suggestions
+      - confidence
+      title: IdentifyResponse
+    IdentifySuggestion:
+      properties:
+        name:
+          type: string
+          title: Name
+        probability:
+          type: number
+          title: Probability
+        similar_images:
+          items:
+            type: string
+          type: array
+          title: Similar Images
+      type: object
+      required:
+      - name
+      - probability
+      title: IdentifySuggestion
+    LatestOut:
+      properties:
+        pot_id:
+          type: string
+          title: Pot Id
+        device_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Id
+        online:
+          type: boolean
+          title: Online
+        reading:
+          anyOf:
+          - $ref: '#/components/schemas/ReadingOut'
+          - type: 'null'
+        health:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Health
+      type: object
+      required:
+      - pot_id
+      - device_id
+      - online
+      - reading
+      - health
+      title: LatestOut
+    ParameterOut:
+      properties:
+        parameter:
+          type: string
+          title: Parameter
+        label:
+          type: string
+          title: Label
+        value:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Value
+        status:
+          type: string
+          enum:
+          - good
+          - warning
+          - bad
+          - unknown
+          title: Status
+        message:
+          type: string
+          title: Message
+        ideal_range:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Ideal Range
+      type: object
+      required:
+      - parameter
+      - label
+      - value
+      - status
+      - message
+      - ideal_range
+      title: ParameterOut
+    PotCreate:
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          minLength: 1
+          title: Name
+        device_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Id
+      type: object
+      required:
+      - name
+      title: PotCreate
+    PotOut:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        device_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Device Id
+        photo_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Photo Url
+        identify_confidence:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Identify Confidence
+        auto_water_enabled:
+          type: boolean
+          title: Auto Water Enabled
+        auto_water_threshold_pct:
+          type: number
+          title: Auto Water Threshold Pct
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        species:
+          anyOf:
+          - $ref: '#/components/schemas/SpeciesOut'
+          - type: 'null'
+      type: object
+      required:
+      - id
+      - name
+      - device_id
+      - photo_url
+      - identify_confidence
+      - auto_water_enabled
+      - auto_water_threshold_pct
+      - created_at
+      title: PotOut
+    PotUpdate:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 120
+            minLength: 1
+          - type: 'null'
+          title: Name
+        auto_water_enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Auto Water Enabled
+        auto_water_threshold_pct:
+          anyOf:
+          - type: number
+            maximum: 100.0
+            minimum: 0.0
+          - type: 'null'
+          title: Auto Water Threshold Pct
+      type: object
+      title: PotUpdate
+    ReadingOut:
+      properties:
+        time:
+          type: string
+          format: date-time
+          title: Time
+        temp_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Temp C
+        rh:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rh
+        soil_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Soil Pct
+        lux:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lux
+        batt_mv:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Batt Mv
+        flags:
+          type: integer
+          title: Flags
+          default: 0
+      type: object
+      required:
+      - time
+      - temp_c
+      - rh
+      - soil_pct
+      - lux
+      title: ReadingOut
+    SeriesOut:
+      properties:
+        pot_id:
+          type: string
+          title: Pot Id
+        bucket:
+          type: string
+          title: Bucket
+        points:
+          items:
+            $ref: '#/components/schemas/SeriesPoint'
+          type: array
+          title: Points
+      type: object
+      required:
+      - pot_id
+      - bucket
+      - points
+      title: SeriesOut
+    SeriesPoint:
+      properties:
+        bucket:
+          type: string
+          format: date-time
+          title: Bucket
+        temp_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Temp C
+        rh:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rh
+        soil_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Soil Pct
+        lux:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lux
+        samples:
+          type: integer
+          title: Samples
+          default: 0
+      type: object
+      required:
+      - bucket
+      title: SeriesPoint
+    SpeciesOut:
+      properties:
+        id:
+          type: string
+          title: Id
+        scientific_name:
+          type: string
+          title: Scientific Name
+        common_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Common Name
+      type: object
+      required:
+      - id
+      - scientific_name
+      - common_name
+      title: SpeciesOut
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+    WaterRequest:
+      properties:
+        duration_s:
+          type: number
+          maximum: 30.0
+          exclusiveMinimum: 0.0
+          title: Duration S
+          description: Capped at the firmware interlock limit
+      type: object
+      required:
+      - duration_s
+      title: WaterRequest
