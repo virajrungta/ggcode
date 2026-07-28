@@ -90,10 +90,14 @@ class _MeshPainter extends CustomPainter {
   /// 0..1, wrapping.
   final double t;
 
+  // Low alphas and tight radii on purpose. The first pass (0.16/0.13/0.07 at
+  // 0.75 diagonal) overlapped into a solid olive field. Glass needs only
+  // enough variation behind it to have something to sample; past that, the
+  // background stops being depth and starts being colour cast.
   static const _blobs = [
-    (color: GGColors.volt, alpha: 0.16, radius: 0.75, phase: 0.0),
-    (color: GGColors.cyan, alpha: 0.13, radius: 0.65, phase: 0.38),
-    (color: GGColors.magenta, alpha: 0.07, radius: 0.55, phase: 0.71),
+    (color: GGColors.volt, alpha: 0.055, radius: 0.50, phase: 0.0),
+    (color: GGColors.cyan, alpha: 0.045, radius: 0.42, phase: 0.38),
+    (color: GGColors.magenta, alpha: 0.028, radius: 0.36, phase: 0.71),
   ];
 
   @override
@@ -105,9 +109,12 @@ class _MeshPainter extends CustomPainter {
 
       // Lissajous drift: the two axes use different frequencies so the blobs
       // never retrace the same loop, which would read as a visible cycle.
+      // Biased to the upper third, where the hero header sits. Centring these
+      // vertically made the three gradients sum to a flat olive wash across
+      // the empty lower half of every screen — muddy, not atmospheric.
       final center = Offset(
-        size.width * (0.5 + 0.34 * math.cos(angle)),
-        size.height * (0.42 + 0.30 * math.sin(angle * 0.73)),
+        size.width * (0.5 + 0.36 * math.cos(angle)),
+        size.height * (0.16 + 0.14 * math.sin(angle * 0.73)),
       );
 
       final radius = diagonal * blob.radius;

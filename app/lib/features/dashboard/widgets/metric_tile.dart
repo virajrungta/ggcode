@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/api/models.dart';
-import '../../../design/glass.dart';
+import '../../../design/components.dart';
 import '../../../design/tokens.dart';
 
 /// One sensor reading with its acceptable band.
 ///
-/// Uses [FauxGlassSurface], not [GlassSurface]: these appear four-up in a grid,
-/// and four `BackdropFilter`s side by side is four `saveLayer`s per frame for a
-/// difference nobody can see at this size.
+/// Solid, not glass: these appear four-up in a grid, and four `BackdropFilter`s
+/// side by side is four `saveLayer`s per frame for a difference nobody can see
+/// at this size.
 class MetricTile extends StatelessWidget {
   const MetricTile({super.key, required this.parameter});
 
@@ -27,32 +27,29 @@ class MetricTile extends StatelessWidget {
     final unit = parameter.idealRange?.unit ?? '';
     final hasValue = parameter.value != null;
 
-    return FauxGlassSurface(
-      borderColor: parameter.status == 'good'
-          ? GGColors.glassBorderTop
-          : color.withValues(alpha: 0.35),
+    return Container(
       padding: const EdgeInsets.all(GGSpacing.m),
+      decoration: BoxDecoration(
+        color: GGColors.surface1,
+        borderRadius: GGRadius.lAll,
+        border: Border.all(
+          color: parameter.status == 'good'
+              ? GGColors.hairline
+              : color.withValues(alpha: 0.35),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
-              Icon(_icons[parameter.parameter] ?? Icons.help_outline,
-                  size: 16, color: color),
-              const SizedBox(width: GGSpacing.s),
-              Expanded(
-                child: Text(
-                  parameter.label.toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: GGColors.textSecondary,
-                    letterSpacing: 1.2,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
+              GGIconTile(
+                icon: _icons[parameter.parameter] ?? Icons.help_outline,
+                color: color, size: 30, iconSize: 15,
               ),
+              const SizedBox(width: GGSpacing.s),
+              Expanded(child: GGCaption(parameter.label)),
             ],
           ),
           const SizedBox(height: GGSpacing.m),
@@ -63,18 +60,20 @@ class MetricTile extends StatelessWidget {
                   TextSpan(
                     text: _format(parameter.value!, parameter.parameter),
                     style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w600,
+                      fontFamily: kFontFamily,
+                      fontSize: 27,
+                      fontWeight: FontWeight.w800,
                       color: GGColors.textPrimary,
                       height: 1,
-                      letterSpacing: -0.5,
+                      letterSpacing: -1,
                     ),
                   ),
                   TextSpan(
                     text: unit,
                     style: const TextStyle(
+                      fontFamily: kFontFamily,
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       color: GGColors.textSecondary,
                     ),
                   ),
@@ -85,8 +84,9 @@ class MetricTile extends StatelessWidget {
             const Text(
               '—',
               style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w600,
+                fontFamily: kFontFamily,
+                fontSize: 27,
+                fontWeight: FontWeight.w800,
                 color: GGColors.textTertiary,
                 height: 1,
               ),

@@ -58,19 +58,21 @@ class HealthRing extends StatelessWidget {
                 Text(
                   '$score',
                   style: TextStyle(
-                    fontSize: size * 0.28,
-                    fontWeight: FontWeight.w600,
+                    fontFamily: kFontFamily,
+                    fontSize: size * 0.30,
+                    fontWeight: FontWeight.w800,
                     color: GGColors.textPrimary,
                     height: 1,
-                    letterSpacing: -1,
+                    letterSpacing: -2,
                   ),
                 ),
                 const SizedBox(height: GGSpacing.xs),
                 Text(
                   status.toUpperCase(),
                   style: TextStyle(
+                    fontFamily: kFontFamily,
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: color,
                     letterSpacing: 1.5,
                   ),
@@ -82,8 +84,9 @@ class HealthRing extends StatelessWidget {
                 const Text(
                   'NO DATA',
                   style: TextStyle(
+                    fontFamily: kFontFamily,
                     fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: GGColors.textTertiary,
                     letterSpacing: 1.5,
                   ),

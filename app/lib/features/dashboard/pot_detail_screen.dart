@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/models.dart';
 import '../../core/providers.dart';
+import '../../design/components.dart';
 import '../../design/glass.dart';
 import '../../design/mesh_background.dart';
 import '../../design/tokens.dart';
@@ -22,33 +23,24 @@ class PotDetailScreen extends ConsumerWidget {
     return MeshBackground(
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          title: Text(pot.name),
-          titleTextStyle: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            color: GGColors.textPrimary,
-          ),
-          iconTheme: const IconThemeData(color: GGColors.textPrimary),
-        ),
-        body: SafeArea(
-          top: false,
-          child: RefreshIndicator(
-            backgroundColor: GGColors.surface,
-            color: GGColors.volt,
-            onRefresh: () async {
-              ref.invalidate(potSnapshotProvider(pot.id));
-              await ref.read(potSnapshotProvider(pot.id).future);
-            },
-            child: snapshot.when(
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: GGColors.volt),
+        appBar: AppBar(title: Text(pot.name)),
+        body: RefreshIndicator(
+          backgroundColor: GGColors.surface,
+          color: GGColors.volt,
+          onRefresh: () async {
+            ref.invalidate(potSnapshotProvider(pot.id));
+            await ref.read(potSnapshotProvider(pot.id).future);
+          },
+          child: snapshot.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => ListView(children: [
+              GGEmptyState(
+                icon: Icons.cloud_off_rounded,
+                title: 'Something went wrong',
+                body: e.toString(),
               ),
-              error: (e, _) => _ErrorState(message: e.toString()),
-              data: (data) => _Content(pot: pot, snapshot: data),
-            ),
+            ]),
+            data: (data) => _Content(pot: pot, snapshot: data),
           ),
         ),
       ),
@@ -65,84 +57,107 @@ class _Content extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final health = snapshot.health;
+    final status = health?.status ?? 'unknown';
+
+    var i = 0;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
-          GGSpacing.m, GGSpacing.s, GGSpacing.m, GGSpacing.xxl),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, GGSpacing.s, 20, 120),
       children: [
-        // The one real blur on this screen. Everything below is faux glass.
+        // The one real blur on this screen; everything below is faux glass.
         GlassSurface(
           blur: GGBlur.heavy,
+          radius: GGRadius.xl,
           padding: const EdgeInsets.symmetric(
               vertical: GGSpacing.xl, horizontal: GGSpacing.l),
-          glowColor: health == null
-              ? null
-              : GGColors.statusColor(health.status),
+          glowColor: GGColors.statusColor(status),
           child: Column(
             children: [
-              HealthRing(
-                score: health?.score,
-                status: health?.status ?? 'unknown',
-              ),
+              HealthRing(score: health?.score, status: status),
               const SizedBox(height: GGSpacing.l),
               Text(
                 pot.species?.displayName ?? 'Unidentified plant',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: GGColors.textPrimary,
-                ),
                 textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontFamily: kFontFamily,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: GGColors.textPrimary,
+                  letterSpacing: -0.4,
+                ),
               ),
-              const SizedBox(height: GGSpacing.xs),
-              _StatusLine(snapshot: snapshot),
+              if (pot.species != null &&
+                  pot.species!.commonName != pot.species!.scientificName) ...[
+                const SizedBox(height: 2),
+                Text(
+                  pot.species!.scientificName,
+                  style: const TextStyle(
+                    fontFamily: kFontFamily,
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    color: GGColors.textSecondary,
+                  ),
+                ),
+              ],
+              const SizedBox(height: GGSpacing.m),
+              _LiveBadge(snapshot: snapshot),
             ],
           ),
-        ),
+        ).entrance(index: i++),
 
         if (health != null && health.isGuess) ...[
           const SizedBox(height: GGSpacing.m),
-          const _GuessBanner(),
+          const _GuessBanner().entrance(index: i++),
         ],
 
         if (health != null) ...[
-          const SizedBox(height: GGSpacing.l),
+          const SizedBox(height: GGSpacing.xl),
+          const GGSectionHeader(title: 'Conditions').entrance(index: i++),
+          const SizedBox(height: GGSpacing.m),
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: GGSpacing.m,
-            crossAxisSpacing: GGSpacing.m,
-            childAspectRatio: 1.35,
+            mainAxisSpacing: GGSpacing.m - 4,
+            crossAxisSpacing: GGSpacing.m - 4,
+            childAspectRatio: 1.28,
             children: [
               for (final p in health.parameters) MetricTile(parameter: p),
             ],
-          ),
+          ).entrance(index: i++),
         ],
 
         if (health != null && health.recommendations.isNotEmpty) ...[
-          const SizedBox(height: GGSpacing.l),
-          _Recommendations(items: health.recommendations),
+          const SizedBox(height: GGSpacing.xl),
+          const GGSectionHeader(title: 'What to do').entrance(index: i++),
+          const SizedBox(height: GGSpacing.m),
+          _Recommendations(items: health.recommendations).entrance(index: i++),
+        ],
+
+        if (health != null && health.notes.isNotEmpty) ...[
+          const SizedBox(height: GGSpacing.m),
+          _Notes(notes: health.notes).entrance(index: i++),
         ],
 
         if (pot.hasDevice) ...[
-          const SizedBox(height: GGSpacing.l),
-          _WaterButton(potId: pot.id),
+          const SizedBox(height: GGSpacing.xl),
+          _WaterButton(potId: pot.id).entrance(index: i++),
         ],
       ],
     );
   }
 }
 
-class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.snapshot});
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge({required this.snapshot});
 
   final PotSnapshot snapshot;
 
   @override
   Widget build(BuildContext context) {
-    final online = snapshot.online;
     final reading = snapshot.reading;
+    final online = snapshot.online;
 
     final label = switch ((online, reading)) {
       (true, _) => 'Live',
@@ -150,26 +165,10 @@ class _StatusLine extends StatelessWidget {
       (false, null) => 'No data yet',
     };
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: online ? GGColors.volt : GGColors.textTertiary,
-            boxShadow: online
-                ? [BoxShadow(color: GGColors.volt.withValues(alpha: 0.7), blurRadius: 6)]
-                : null,
-          ),
-        ),
-        const SizedBox(width: GGSpacing.s),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 13, color: GGColors.textSecondary),
-        ),
-      ],
+    return GGStatusPill(
+      label: label,
+      color: online ? GGColors.volt : GGColors.textTertiary,
+      glowing: online,
     );
   }
 
@@ -182,26 +181,37 @@ class _StatusLine extends StatelessWidget {
   }
 }
 
-/// Shown when the care thresholds came from the global default rather than a
-/// real profile. The backend distinguishes species/genus/default confidence
-/// precisely so this can be surfaced instead of presenting a guess as fact.
+/// Shown when thresholds came from the global default rather than a real
+/// profile. The backend reports species/genus/default confidence precisely so
+/// this can be surfaced instead of presenting a guess as fact.
 class _GuessBanner extends StatelessWidget {
   const _GuessBanner();
 
   @override
   Widget build(BuildContext context) {
-    return FauxGlassSurface(
-      borderColor: GGColors.amber.withValues(alpha: 0.35),
+    return Container(
+      padding: const EdgeInsets.all(GGSpacing.m),
+      decoration: BoxDecoration(
+        borderRadius: GGRadius.lAll,
+        color: GGColors.amber.withValues(alpha: 0.08),
+        border: Border.all(color: GGColors.amber.withValues(alpha: 0.3)),
+      ),
       child: Row(
         children: [
-          const Icon(Icons.info_outline_rounded,
-              size: 18, color: GGColors.amber),
-          const SizedBox(width: GGSpacing.m),
+          const GGIconTile(
+              icon: Icons.info_rounded, color: GGColors.amber, size: 40,
+              iconSize: 18),
+          const SizedBox(width: GGSpacing.m - 4),
           const Expanded(
             child: Text(
-              'Using general plant care ranges. Identify this plant for '
-              'thresholds tuned to its species.',
-              style: TextStyle(fontSize: 13, color: GGColors.textSecondary, height: 1.4),
+              'Using general care ranges. Identify this plant for thresholds '
+              'tuned to its species.',
+              style: TextStyle(
+                fontFamily: kFontFamily,
+                fontSize: 13,
+                color: GGColors.textSecondary,
+                height: 1.45,
+              ),
             ),
           ),
         ],
@@ -217,46 +227,77 @@ class _Recommendations extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FauxGlassSurface(
+    return Column(
+      children: [
+        for (final item in items)
+          Container(
+            margin: const EdgeInsets.only(bottom: GGSpacing.s),
+            padding: const EdgeInsets.all(GGSpacing.m),
+            decoration: BoxDecoration(
+              borderRadius: GGRadius.mAll,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.07),
+                  Colors.white.withValues(alpha: 0.03),
+                ],
+              ),
+              border: Border.all(color: GGColors.glassBorderTop),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.arrow_forward_rounded,
+                    size: 16, color: GGColors.volt),
+                const SizedBox(width: GGSpacing.m - 4),
+                Expanded(
+                  child: Text(
+                    item,
+                    style: const TextStyle(
+                      fontFamily: kFontFamily,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: GGColors.textPrimary,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _Notes extends StatelessWidget {
+  const _Notes({required this.notes});
+
+  final List<String> notes;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(GGSpacing.m),
+      decoration: BoxDecoration(
+        borderRadius: GGRadius.mAll,
+        color: GGColors.cyan.withValues(alpha: 0.06),
+        border: Border.all(color: GGColors.cyan.withValues(alpha: 0.22)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'WHAT TO DO',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: GGColors.textSecondary,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: GGSpacing.m),
-          for (final item in items)
-            Padding(
-              padding: const EdgeInsets.only(bottom: GGSpacing.s),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 4,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 7, right: GGSpacing.m),
-                    decoration: const BoxDecoration(
-                      color: GGColors.volt,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      item,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: GGColors.textPrimary,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
+          const GGCaption('Good to know', color: GGColors.cyan),
+          const SizedBox(height: GGSpacing.s),
+          for (final note in notes)
+            Text(
+              note,
+              style: const TextStyle(
+                fontFamily: kFontFamily,
+                fontSize: 13,
+                color: GGColors.textSecondary,
+                height: 1.45,
               ),
             ),
         ],
@@ -297,10 +338,8 @@ class _WaterButtonState extends ConsumerState<_WaterButton> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: GGColors.surface,
-        behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(GGRadius.m),
+          borderRadius: GGRadius.sAll,
           side: BorderSide(color: color.withValues(alpha: 0.5)),
         ),
       ),
@@ -309,51 +348,23 @@ class _WaterButtonState extends ConsumerState<_WaterButton> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: GGRadius.mAll,
+        boxShadow: _busy ? null : ggGlow(GGColors.volt, opacity: 0.3),
+      ),
       child: FilledButton.icon(
         onPressed: _busy ? null : _water,
         icon: _busy
             ? const SizedBox(
                 width: 18,
                 height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: GGColors.bgDeep),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: GGColors.bgDeep),
               )
             : const Icon(Icons.water_drop_rounded, size: 20),
         label: Text(_busy ? 'Watering…' : 'Water now'),
-        style: FilledButton.styleFrom(
-          backgroundColor: GGColors.volt,
-          foregroundColor: GGColors.bgDeep,
-          disabledBackgroundColor: GGColors.volt.withValues(alpha: 0.4),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(GGRadius.l),
-          ),
-        ),
       ),
-    );
-  }
-}
-
-class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(GGSpacing.xl),
-      children: [
-        const SizedBox(height: GGSpacing.xxl),
-        const Icon(Icons.cloud_off_rounded, size: 48, color: GGColors.textTertiary),
-        const SizedBox(height: GGSpacing.l),
-        Text(
-          message,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: GGColors.textSecondary, height: 1.5),
-        ),
-      ],
     );
   }
 }

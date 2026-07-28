@@ -6,10 +6,9 @@ import 'package:greengenius/design/mesh_background.dart';
 import 'package:greengenius/design/tokens.dart';
 import 'package:greengenius/features/dashboard/widgets/health_ring.dart';
 import 'package:greengenius/features/dashboard/widgets/metric_tile.dart';
-import 'package:greengenius/main.dart';
 
 Widget wrap(Widget child) => MaterialApp(
-      theme: buildTheme(),
+      theme: GGTheme.dark,
       home: Scaffold(body: Center(child: child)),
     );
 
