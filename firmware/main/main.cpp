@@ -266,5 +266,9 @@ extern "C" void app_main() {
 
     ESP_LOGI(TAG, "advertising as %s", adv_name);
 
-    xTaskCreate(telemetry_task, "telemetry", 4096, nullptr, 5, nullptr);
+    /* Core 1 on purpose. The DHT driver disables interrupts for ~5ms per read,
+     * and portENTER_CRITICAL only affects the calling core — keeping this off
+     * core 0 leaves the Wi-Fi task and BT controller undisturbed. */
+    xTaskCreatePinnedToCore(telemetry_task, "telemetry", 4096, nullptr, 5,
+                            nullptr, 1);
 }

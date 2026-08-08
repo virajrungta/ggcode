@@ -142,18 +142,28 @@ static bool soil_to_pct(uint16_t raw, uint16_t air, uint16_t water, float *out) 
 static bool dht_read_raw(float *temp_c, float *rh) {
     uint8_t data[5] = {0};
 
-    gpio_set_direction(GG_DHT_GPIO, GPIO_MODE_OUTPUT);
+    /* Stays open-drain throughout. R8 (4.7k) on the board is the pull-up, and
+     * the Grove module carries its own; driving push-pull high would fight the
+     * sensor while it is holding the line low. Writing 1 in OD mode releases
+     * the line rather than driving it. */
     gpio_set_level(GG_DHT_GPIO, 0);
-    // DHT22 needs >=1ms low; DHT11 needs >=18ms.
+    // AM2302 wants the host low for >=800us (1-10ms per datasheet).
 #if GG_DHT_TYPE_DHT22
     esp_rom_delay_us(1500);
 #else
     vTaskDelay(pdMS_TO_TICKS(20));
 #endif
-    gpio_set_level(GG_DHT_GPIO, 1);
+    gpio_set_level(GG_DHT_GPIO, 1);  // release; pull-up takes it high
     esp_rom_delay_us(30);
-    gpio_set_direction(GG_DHT_GPIO, GPIO_MODE_INPUT);
 
+    /* The 40-bit frame takes ~5ms and the bit timing (26us = 0, 70us = 1) is
+     * far tighter than a 1ms FreeRTOS tick, so the capture cannot be preempted.
+     *
+     * portENTER_CRITICAL disables interrupts on the *calling core only*. That
+     * is why this must run pinned to core 1: the Wi-Fi task and the BT
+     * controller live on core 0, and blocking interrupts there for 5ms at a
+     * time causes dropped beacons and disconnects. On core 1 they are
+     * untouched. See the xTaskCreatePinnedToCore call in main.cpp. */
     portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
     portENTER_CRITICAL(&mux);
 
@@ -202,6 +212,9 @@ static bool dht_read_raw(float *temp_c, float *rh) {
     *temp_c = (float)data[2];
 #endif
 
+    /* AM2302 datasheet range: -40..80 C, 5..99 %RH. Outside that is a decode
+     * error, not a reading — the checksum catches most corruption but not a
+     * frame that is valid-but-shifted. */
     if (*rh < 0.0f || *rh > 100.0f) return false;
     if (*temp_c < -40.0f || *temp_c > 80.0f) return false;
     return true;
