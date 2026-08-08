@@ -84,6 +84,9 @@ esp_err_t gg_sensors_read_raw(uint16_t *soil1, uint16_t *soil2,
 
 bool gg_sensors_reservoir_empty(void);
 
+// Raw ADC count -> millivolts via eFuse calibration. -1 if uncalibrated.
+int gg_sensors_raw_to_mv(uint16_t raw);
+
 void gg_sensors_pack(const gg_reading_t *r, uint32_t uptime_s,
                      uint8_t extra_flags, gg_telemetry_t *out);
 

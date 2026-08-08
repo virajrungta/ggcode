@@ -6,6 +6,8 @@
 #include <string.h>
 
 #include "driver/gpio.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
@@ -18,7 +20,22 @@
 static const char *TAG = "gg_sensors";
 
 static adc_oneshot_unit_handle_t s_adc = NULL;
+static adc_cali_handle_t         s_cali = NULL;   // NULL = raw counts only
 static gg_calibration_t          s_cal = {0};
+
+/* Converts a raw count to millivolts using the factory characterisation
+ * burned into eFuse ("VRef calibration in efuse" on this chip). Without it,
+ * raw counts drift several percent between individual ESP32s, which would
+ * make a soil calibration captured on one board wrong on the next. Returns
+ * -1 when no calibration scheme is available. */
+static int adc_to_mv(uint16_t raw) {
+    if (!s_cali || raw == UINT16_MAX) return -1;
+    int mv = 0;
+    if (adc_cali_raw_to_voltage(s_cali, (int)raw, &mv) != ESP_OK) return -1;
+    return mv;
+}
+
+int gg_sensors_raw_to_mv(uint16_t raw) { return adc_to_mv(raw); }
 
 // DHT frames are cached: the sensor physically cannot be sampled faster than
 // ~2s, and polling it harder returns corrupt or stale frames.
@@ -252,6 +269,7 @@ static bool dht_read_cached(float *temp_c, float *rh) {
  * Reported as a 0-100 relative brightness, not lux. An LDR is non-linear,
  * has wide part-to-part tolerance, and is uncalibrated here; converting to a
  * lux figure would put a precise-looking number on a guess. */
+__attribute__((unused))
 static float light_to_estimate(uint16_t raw) {
     float ratio = (float)raw / 4095.0f;
     if (ratio < 0.0f) ratio = 0.0f;
@@ -291,6 +309,22 @@ esp_err_t gg_sensors_init(void) {
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, GG_SOIL2_ADC_CHANNEL, &chan));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, GG_WLVL_ADC_CHANNEL, &chan));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, GG_LIGHT_ADC_CHANNEL, &chan));
+
+    /* ESP32 supports line-fitting calibration only (curve fitting is S2/S3/C3).
+     * Not fatal if unavailable — the soil percentages come from a per-probe
+     * air/water calibration either way; mV just makes those numbers portable
+     * across boards and readable during bring-up. */
+    adc_cali_line_fitting_config_t cali_cfg = {
+        .unit_id = GG_ADC_UNIT,
+        .atten = GG_ADC_ATTEN,
+        .bitwidth = GG_ADC_BITWIDTH,
+    };
+    if (adc_cali_create_scheme_line_fitting(&cali_cfg, &s_cali) == ESP_OK) {
+        ESP_LOGI(TAG, "ADC calibration active (line fitting, eFuse VRef)");
+    } else {
+        s_cali = NULL;
+        ESP_LOGW(TAG, "ADC calibration unavailable - reporting raw counts only");
+    }
 
     gpio_config_t led = {
         .pin_bit_mask = 1ULL << GG_STATUS_LED_GPIO,
@@ -344,10 +378,16 @@ esp_err_t gg_sensors_read(gg_reading_t *out) {
         ESP_LOGW(TAG, "soil1 raw=%u but no valid calibration", out->soil1_raw);
     }
 
+#if GG_HAS_LDR
     if (out->light_raw != UINT16_MAX) {
         out->light_est = light_to_estimate(out->light_raw);
         out->light_valid = true;
     }
+#else
+    // R9 depopulated: GPIO35 is held at 0V by R10, so any number derived from
+    // it is fiction. Left invalid so it travels as the fault sentinel.
+    out->light_valid = false;
+#endif
 
     if (out->wlvl_raw != UINT16_MAX) {
         out->water_level_pct = 100.0f * (float)out->wlvl_raw / 4095.0f;
@@ -381,9 +421,14 @@ void gg_sensors_pack(const gg_reading_t *r, uint32_t uptime_s,
     // has an LDR, so the value is a 0-100 estimate scaled by 10.
     out->lux_x10 = r->light_valid ? (uint32_t)(r->light_est * 10.0f) : GG_LUX_FAULT;
 
-    if (!r->temp_valid || !r->rh_valid || !r->light_valid) {
-        flags |= GG_FLAG_SENSOR_FAULT;
-    }
+    /* A depopulated sensor is not a fault — flagging it would put a permanent
+     * warning on every reading for hardware that was never fitted. Only
+     * sensors that exist and failed count. */
+    bool fault = !r->temp_valid || !r->rh_valid;
+#if GG_HAS_LDR
+    fault = fault || !r->light_valid;
+#endif
+    if (fault) flags |= GG_FLAG_SENSOR_FAULT;
     if (!gg_sensors_is_calibrated()) flags |= GG_FLAG_UNCALIBRATED;
 
     out->flags = flags;

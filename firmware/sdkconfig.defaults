@@ -18,11 +18,16 @@ CONFIG_BT_NIMBLE_SM_LEGACY=y
 CONFIG_BT_NIMBLE_SM_SC=y
 
 # --- Flash / partitions ------------------------------------------------
-CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
-CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
-# Two OTA slots. OTA has to exist before hardware leaves the bench, or every
-# firmware bug becomes a physical recall.
-CONFIG_PARTITION_TABLE_TWO_OTA=y
+# The module fits 16MB, not the 4MB the first build assumed.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+
+# Custom table: two 3MB OTA slots plus ~9.8MB of storage. OTA has to exist
+# before hardware leaves the bench, or every firmware bug becomes a recall;
+# the storage partition is where offline telemetry buffering will live when
+# the pot loses Wi-Fi.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # --- Watchdogs ---------------------------------------------------------
 # The pump is the reason these matter: a hung task must not be able to leave

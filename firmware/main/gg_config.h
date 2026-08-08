@@ -44,13 +44,28 @@
 #define GG_SOIL_PERMANENTLY_POWERED  1
 
 // --- Light (LDR divider) -------------------------------------------------
-// R9 (LDR) from +3V3 to LIGHT, R10 (10k) from LIGHT to GND.
-// Brighter -> LDR resistance falls -> LIGHT rises toward 3V3.
+// R9 (LDR) is DEPOPULATED on this prototype build — the schematic has it but
+// the assembled board does not. With R9 absent and R10 (10k) still tying
+// LIGHT to GND, GPIO35 is held at 0V permanently.
 //
-// This yields a *relative* brightness, not calibrated lux: an LDR's response
-// is non-linear, part-to-part tolerance is wide, and it is uncalibrated here.
-// Reported values are an estimate and are flagged as such on the wire.
+// So light is reported as *absent*, not as 0%. Sending a real-looking zero
+// would render in the app as "pitch dark, forever" and would drag the plant
+// health score down for a sensor that was never fitted. The fault sentinel
+// makes the backend store null and the UI show "no data", which is true.
+#define GG_HAS_LDR               0
 #define GG_LDR_FIXED_OHMS        10000.0f
+
+// --- Not populated on this build -----------------------------------------
+// SW1 (RESET) and SW2 (BOOT) are absent. Flashing still works: the CH340C
+// drives DTR/RTS into Q1/Q2, which pulses EN and IO0 automatically, and that
+// path is confirmed working on this board.
+//
+// The consequence is that there is no manual recovery. If firmware ever wedges
+// the chip badly enough that the auto-reset sequence cannot catch it, the only
+// way back is to short EN to GND by hand. Keep that in mind before flashing
+// anything that touches the bootloader or the EN pin.
+#define GG_HAS_RESET_BUTTON      0
+#define GG_HAS_BOOT_BUTTON       0
 
 // --- DHT temperature / humidity ------------------------------------------
 // Single-wire, R8 4.7k pull-up to 3V3. NOT I2C — earlier firmware assumed an

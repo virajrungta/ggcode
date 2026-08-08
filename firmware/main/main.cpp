@@ -157,6 +157,18 @@ static void on_pump_event(const char *reason, uint32_t duration_ms) {
 
 // --- telemetry task ------------------------------------------------------
 
+/* Blinks D2. With no DHT connector, no LDR, and the pump unplugged, this is
+ * the one output on the board that can be verified by eye today: it proves
+ * GPIO writes work and that the firmware loop is still running. */
+static void heartbeat_task(void *) {
+    for (;;) {
+        gg_status_led(true);
+        vTaskDelay(pdMS_TO_TICKS(80));
+        gg_status_led(false);
+        vTaskDelay(pdMS_TO_TICKS(1920));
+    }
+}
+
 static void telemetry_task(void *) {
     TickType_t last = xTaskGetTickCount();
 
@@ -169,10 +181,21 @@ static void telemetry_task(void *) {
             s_telemetry_chr->notify();
         }
 
-        ESP_LOGI(TAG, "uptime=%lus soil=%u temp=%d rh=%u lux=%lu flags=0x%02X",
-                 (unsigned long)packed.uptime_s, packed.soil_pct_x100,
-                 packed.temp_c_x100, packed.rh_x100,
-                 (unsigned long)packed.lux_x10, packed.flags);
+        // Bring-up detail: raw counts and mV alongside the packed frame, so a
+        // sensor can be judged before any calibration exists for it.
+        gg_reading_t raw;
+        gg_sensors_read(&raw);
+        ESP_LOGI(TAG,
+                 "RAW soil1=%u(%dmV) soil2=%u(%dmV) light=%u(%dmV) wlvl=%u(%dmV)",
+                 raw.soil1_raw, gg_sensors_raw_to_mv(raw.soil1_raw),
+                 raw.soil2_raw, gg_sensors_raw_to_mv(raw.soil2_raw),
+                 raw.light_raw, gg_sensors_raw_to_mv(raw.light_raw),
+                 raw.wlvl_raw,  gg_sensors_raw_to_mv(raw.wlvl_raw));
+        ESP_LOGI(TAG, "light_est=%.1f%%  temp=%.1fC rh=%.1f%%  flags=0x%02X",
+                 raw.light_valid ? raw.light_est : -1.0f,
+                 raw.temp_valid ? raw.temp_c : -99.0f,
+                 raw.rh_valid ? raw.rh : -1.0f,
+                 packed.flags);
 
         /* Fast cadence only while someone is watching. Holding 1Hz plus a 15ms
          * connection interval continuously is a real battery cost on the phone. */
@@ -271,4 +294,5 @@ extern "C" void app_main() {
      * core 0 leaves the Wi-Fi task and BT controller undisturbed. */
     xTaskCreatePinnedToCore(telemetry_task, "telemetry", 4096, nullptr, 5,
                             nullptr, 1);
+    xTaskCreate(heartbeat_task, "heartbeat", 2048, nullptr, 2, nullptr);
 }
