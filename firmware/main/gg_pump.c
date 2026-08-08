@@ -83,14 +83,6 @@ esp_err_t gg_pump_init(gg_pump_event_cb_t cb) {
      * can stay latched on across a reboot loop, which is the flood scenario. */
     pump_gpio_set(false);
 
-#if GG_RESERVOIR_GPIO >= 0
-    gpio_config_t res = {
-        .pin_bit_mask = 1ULL << GG_RESERVOIR_GPIO,
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-    };
-    ESP_ERROR_CHECK(gpio_config(&res));
-#endif
 
     const esp_timer_create_args_t targs = {
         .callback = stop_timer_cb,
@@ -110,12 +102,9 @@ esp_err_t gg_pump_init(gg_pump_event_cb_t cb) {
 }
 
 bool gg_pump_reservoir_empty(void) {
-#if GG_RESERVOIR_GPIO >= 0
-    // Float switch pulls low when water is present.
-    return gpio_get_level(GG_RESERVOIR_GPIO) != 0;
-#else
-    return false;
-#endif
+    // ggpcb3 has an analog water-level sensor on GPIO34, not a float switch,
+    // so the reading lives with the other ADC channels.
+    return gg_sensors_reservoir_empty();
 }
 
 bool gg_pump_is_running(void) { return s_running; }
@@ -172,9 +161,9 @@ gg_pump_result_t gg_pump_start(uint32_t duration_ms, const char *source) {
 
     {
         gg_reading_t reading;
-        if (gg_sensors_read(&reading) == ESP_OK && reading.soil_valid &&
-            reading.soil_pct >= GG_PUMP_SOIL_WET_THRESHOLD) {
-            ESP_LOGW(TAG, "refusing: soil already at %.1f%%", reading.soil_pct);
+        if (gg_sensors_read(&reading) == ESP_OK && reading.soil1_valid &&
+            reading.soil1_pct >= GG_PUMP_SOIL_WET_THRESHOLD) {
+            ESP_LOGW(TAG, "refusing: soil already at %.1f%%", reading.soil1_pct);
             result = GG_PUMP_ERR_SOIL_WET;
             goto done;
         }

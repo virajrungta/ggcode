@@ -85,34 +85,43 @@ class CalibrationCallbacks : public NimBLECharacteristicCallbacks {
         gg_calibration_t cal;
         gg_sensors_get_calibration(&cal);
 
-        uint16_t raw = 0;
-        gg_sensors_read_soil_raw(&raw);
+        uint16_t s1 = 0, s2 = 0;
+        gg_sensors_read_raw(&s1, &s2, nullptr, nullptr);
 
-        char json[192];
+        // Both probes are exposed: ggpcb3 fits two, and the app's calibration
+        // flow has to be able to walk the user through each one.
+        char json[256];
         snprintf(json, sizeof(json),
-                 "{\"soil_air_raw\":%u,\"soil_water_raw\":%u,"
-                 "\"calibrated_at\":%lu,\"current_raw\":%u}",
-                 cal.soil_air_raw, cal.soil_water_raw,
-                 (unsigned long)cal.calibrated_at, raw);
+                 "{\"soil1_air_raw\":%u,\"soil1_water_raw\":%u,"
+                 "\"soil2_air_raw\":%u,\"soil2_water_raw\":%u,"
+                 "\"calibrated_at\":%lu,"
+                 "\"soil1_current_raw\":%u,\"soil2_current_raw\":%u}",
+                 cal.soil1_air_raw, cal.soil1_water_raw,
+                 cal.soil2_air_raw, cal.soil2_water_raw,
+                 (unsigned long)cal.calibrated_at, s1, s2);
         chr->setValue((uint8_t *)json, strlen(json));
     }
 
     void onWrite(NimBLECharacteristic *chr, NimBLEConnInfo &) override {
         std::string v = chr->getValue();
-        unsigned air = 0, water = 0;
+        unsigned a1 = 0, w1 = 0, a2 = 0, w2 = 0;
         unsigned long at = 0;
 
         // Minimal parse - the app sends exactly this shape.
         if (sscanf(v.c_str(),
-                   "{\"soil_air_raw\":%u,\"soil_water_raw\":%u,\"calibrated_at\":%lu",
-                   &air, &water, &at) < 2) {
+                   "{\"soil1_air_raw\":%u,\"soil1_water_raw\":%u,"
+                   "\"soil2_air_raw\":%u,\"soil2_water_raw\":%u,"
+                   "\"calibrated_at\":%lu",
+                   &a1, &w1, &a2, &w2, &at) < 2) {
             ESP_LOGW(TAG, "unparseable calibration write");
             return;
         }
 
         gg_calibration_t cal = {
-            .soil_air_raw = (uint16_t)air,
-            .soil_water_raw = (uint16_t)water,
+            .soil1_air_raw = (uint16_t)a1,
+            .soil1_water_raw = (uint16_t)w1,
+            .soil2_air_raw = (uint16_t)a2,
+            .soil2_water_raw = (uint16_t)w2,
             .calibrated_at = (uint32_t)at,
         };
         // set_calibration rejects inverted or implausibly narrow spans.

@@ -1,60 +1,105 @@
 #pragma once
 
-// Board pinout and tuning constants for the GreenGenius PCB (ggpcb-r1).
+// Board configuration for ggpcb3 (ESP32-WROOM-32E).
 //
-// >>> VERIFY AGAINST THE SCHEMATIC BEFORE THE BOARDS SHIP. <<<
+// Every value below was read off the KiCad schematic + PCB netlist, not
+// assumed. Source: ~/Desktop/ggpcb3/ggpcb3.kicad_sch / .kicad_pcb
 //
-// The soil probe MUST land on an ADC1 channel. ADC2 is shared with the WiFi
-// radio on the ESP32: any adc2_get_raw() while WiFi is started returns
-// ESP_ERR_TIMEOUT, so a probe wired to ADC2 reads fine on the bench and then
-// fails permanently once the pot joins a network -- the exact configuration
-// the product ships in. After fabrication this is a trace-cut fix.
-//
-// ADC1 channels are GPIO32-39 on the classic ESP32.
+// Net -> module pad -> GPIO:
+//   SOIL1   pad 4   GPIO36 (SENSOR_VP)  ADC1_CH0
+//   SOIL2   pad 5   GPIO39 (SENSOR_VN)  ADC1_CH3
+//   WLVL    pad 6   GPIO34              ADC1_CH6
+//   LIGHT   pad 7   GPIO35              ADC1_CH7
+//   DHT     pad 10  GPIO25              1-wire, 4.7k pull-up (R8)
+//   IO12_G  pad 14  GPIO12              -> R11 100R -> Q3 gate (pump)
+//   STATUS  pad 16  GPIO13              -> R7 1k -> D2 blue LED
 
 #define GG_FW_VERSION            "1.0.0"
-#define GG_HW_REVISION           "ggpcb-r1"
+#define GG_HW_REVISION           "ggpcb3"
 #define GG_MODEL                 "GG-POT-1"
 
-// --- Soil moisture (capacitive, analog) ----------------------------------
-#define GG_SOIL_ADC_UNIT         ADC_UNIT_1
-#define GG_SOIL_ADC_CHANNEL      ADC_CHANNEL_6   // GPIO34 - ADC1, input-only
-#define GG_SOIL_ADC_ATTEN        ADC_ATTEN_DB_12 // full ~0-3.1V span
+// --- Analog inputs -------------------------------------------------------
+//
+// All four are on ADC1. This closes the risk flagged throughout the plan:
+// ADC2 is unusable while Wi-Fi is started, and a probe wired there would read
+// fine on the bench and fail permanently once the pot joined a network. The
+// board avoids it entirely. Do not move any of these to ADC2.
+//
+// GPIO34-39 are input-only and have no internal pull-ups/downs, which is
+// correct for analog.
 
-// Powering the probe only while sampling roughly halves its idle draw and
-// dramatically slows the electrolytic corrosion that kills these probes.
-#define GG_SOIL_POWER_GPIO       25
-#define GG_SOIL_SETTLE_MS        50
+#define GG_SOIL1_ADC_CHANNEL     ADC_CHANNEL_0   // GPIO36 / SENSOR_VP
+#define GG_SOIL2_ADC_CHANNEL     ADC_CHANNEL_3   // GPIO39 / SENSOR_VN
+#define GG_WLVL_ADC_CHANNEL      ADC_CHANNEL_6   // GPIO34
+#define GG_LIGHT_ADC_CHANNEL     ADC_CHANNEL_7   // GPIO35
 
-// --- I2C bus (temp/humidity + light) -------------------------------------
-#define GG_I2C_PORT              I2C_NUM_0
-#define GG_I2C_SDA_GPIO          21
-#define GG_I2C_SCL_GPIO          22
-#define GG_I2C_FREQ_HZ           100000
+#define GG_ADC_UNIT              ADC_UNIT_1
+#define GG_ADC_ATTEN             ADC_ATTEN_DB_12 // ~0-3.1V full span
+#define GG_ADC_BITWIDTH          ADC_BITWIDTH_12
 
-#define GG_SHT4X_ADDR            0x44
-#define GG_BH1750_ADDR           0x23
+// The probes are wired straight to 3V3 (J2/J3 pin 2) with no switching FET,
+// so they are powered continuously. That rules out duty-cycling them, which
+// is the usual way to slow the electrolytic corrosion that eventually kills
+// capacitive probes. Worth a gate on a future revision.
+#define GG_SOIL_PERMANENTLY_POWERED  1
+
+// --- Light (LDR divider) -------------------------------------------------
+// R9 (LDR) from +3V3 to LIGHT, R10 (10k) from LIGHT to GND.
+// Brighter -> LDR resistance falls -> LIGHT rises toward 3V3.
+//
+// This yields a *relative* brightness, not calibrated lux: an LDR's response
+// is non-linear, part-to-part tolerance is wide, and it is uncalibrated here.
+// Reported values are an estimate and are flagged as such on the wire.
+#define GG_LDR_FIXED_OHMS        10000.0f
+
+// --- DHT temperature / humidity ------------------------------------------
+// Single-wire, R8 4.7k pull-up to 3V3. NOT I2C — earlier firmware assumed an
+// SHT4x on an I2C bus that does not exist on this board.
+#define GG_DHT_GPIO              25
+#define GG_DHT_TYPE_DHT22        1      // 0 = DHT11
+
+// DHT22 needs ~2s between reads; DHT11 ~1s. Polling faster returns a cached
+// or corrupt frame, so this bounds the live-view rate too.
+#define GG_DHT_MIN_INTERVAL_MS   2200
 
 // --- Pump ----------------------------------------------------------------
-// Drives a MOSFET gate, never the pump directly. The pump needs its own supply
-// rail: switching an inductive load on the 3.3V rail browns out the ESP32
-// mid-cycle, and a reset during watering can leave the pump latched on.
-#define GG_PUMP_GPIO             26
+// GPIO12 -> R11 (100R) -> Q3 (AO3400A N-channel) gate, R12 10k gate pulldown.
+// Low-side switch: J6 pin1 = +5V, pin2 = drain. D3 (SS14) is the flyback
+// diode, C13 (100uF) the bulk cap on +5V.
+//
+// !! GPIO12 IS THE MTDI STRAPPING PIN. It selects flash voltage at reset:
+// held high at boot, the chip configures for 1.8V flash and will not start.
+// R12 pulls it down, and "pump off" is the same state, so the default is
+// safe. Two consequences that must be respected:
+//   1. never add an external pull-up to this net;
+//   2. never leave the pump energised across a reset — gg_pump_init drives
+//      it low before anything else can run.
+#define GG_PUMP_GPIO             12
 #define GG_PUMP_ACTIVE_HIGH      1
 
-// Optional float switch / current sense. Set to -1 if unpopulated.
-#define GG_RESERVOIR_GPIO        27
+// --- Status LED ----------------------------------------------------------
+// GPIO13 -> R7 (1k) -> D2 (blue). Active high.
+#define GG_STATUS_LED_GPIO       13
+
+// --- Water level ---------------------------------------------------------
+// Analog on GPIO34. Threshold is provisional until the actual sensor is
+// characterised on the bench - see gg_sensors.c.
+#define GG_WLVL_EMPTY_RAW        600
 
 // --- Sampling ------------------------------------------------------------
 #define GG_SAMPLE_INTERVAL_MS    60000     // 60s, per contracts/telemetry.md
 #define GG_PUBLISH_INTERVAL_MS   300000    // 5 min
 #define GG_BATCH_MAX_SAMPLES     12
-#define GG_LIVE_INTERVAL_MS      1000      // BLE live view only
+
+// Bounded by the DHT, not by preference.
+#define GG_LIVE_INTERVAL_MS      GG_DHT_MIN_INTERVAL_MS
+
+#define GG_ADC_SAMPLES           9         // median-of-N per reading
 
 // --- Safety interlocks ---------------------------------------------------
 // Enforced in firmware because they must hold when the cloud is unreachable,
-// wrong, or compromised. The backend duplicates them for better UX, but these
-// are the ones that actually prevent a flood.
+// wrong, or compromised. The backend duplicates them for better UX; these are
+// the ones that actually prevent a flood.
 #define GG_PUMP_MAX_RUNTIME_MS       30000     // hard cap, single run
 #define GG_PUMP_MAX_PER_HOUR_MS      120000    // 2 min/hour cumulative
 #define GG_PUMP_MAX_PER_DAY_MS       600000    // 10 min/day cumulative
@@ -64,9 +109,9 @@
 
 // --- NVS keys ------------------------------------------------------------
 #define GG_NVS_NAMESPACE         "gg"
-#define GG_NVS_SOIL_AIR          "soil_air"
-#define GG_NVS_SOIL_WATER        "soil_water"
+#define GG_NVS_SOIL1_AIR         "s1_air"
+#define GG_NVS_SOIL1_WATER       "s1_water"
+#define GG_NVS_SOIL2_AIR         "s2_air"
+#define GG_NVS_SOIL2_WATER       "s2_water"
 #define GG_NVS_CALIBRATED_AT     "cal_at"
 #define GG_NVS_MQTT_SECRET       "mqtt_sec"
-#define GG_NVS_PUMP_DAY_MS       "pump_day"
-#define GG_NVS_PUMP_HOUR_MS      "pump_hr"

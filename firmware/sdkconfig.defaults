@@ -1,0 +1,37 @@
+# Build defaults for ggpcb3 (ESP32-WROOM-32E, 4MB flash).
+# Checked in so every developer and CI build the same binary.
+
+CONFIG_IDF_TARGET="esp32"
+
+# --- Bluetooth: NimBLE only -------------------------------------------
+# Bluedroid is the other stack; NimBLE uses far less RAM/flash and is what
+# the GATT server in main.cpp is written against.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_NIMBLE_SM_LEGACY=y
+CONFIG_BT_NIMBLE_SM_SC=y
+
+# --- Flash / partitions ------------------------------------------------
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+# Two OTA slots. OTA has to exist before hardware leaves the bench, or every
+# firmware bug becomes a physical recall.
+CONFIG_PARTITION_TABLE_TWO_OTA=y
+
+# --- Watchdogs ---------------------------------------------------------
+# The pump is the reason these matter: a hung task must not be able to leave
+# an actuator energised.
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
+CONFIG_ESP_INT_WDT=y
+
+# --- Misc --------------------------------------------------------------
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=4096
+CONFIG_FREERTOS_HZ=1000
