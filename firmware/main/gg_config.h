@@ -102,7 +102,16 @@
 #define GG_WLVL_EMPTY_RAW        600
 
 // --- Sampling ------------------------------------------------------------
+// Bring-up mode logs every 2s so a probe can be watched live while it is
+// moved between air and water. Production sampling is 60s per
+// contracts/telemetry.md — set this back to 0 before shipping.
+#define GG_BRINGUP_MODE          1
+
+#if GG_BRINGUP_MODE
+#define GG_SAMPLE_INTERVAL_MS    2000
+#else
 #define GG_SAMPLE_INTERVAL_MS    60000     // 60s, per contracts/telemetry.md
+#endif
 #define GG_PUBLISH_INTERVAL_MS   300000    // 5 min
 #define GG_BATCH_MAX_SAMPLES     12
 
