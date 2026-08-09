@@ -142,6 +142,11 @@ bool gg_sensors_is_calibrated(void) {
 
 static bool soil_to_pct(uint16_t raw, uint16_t air, uint16_t water, float *out) {
     if (raw == UINT16_MAX || !pair_is_sane(air, water)) return false;
+
+    /* Below the plausibility floor the probe is disconnected, not wet. See
+     * GG_SOIL_MIN_PLAUSIBLE_RAW — reporting this as data would clamp to 100%
+     * and permanently inhibit watering. */
+    if (raw < GG_SOIL_MIN_PLAUSIBLE_RAW) return false;
     float pct = 100.0f * ((float)air - (float)raw) / ((float)air - (float)water);
     if (pct < 0.0f) pct = 0.0f;
     if (pct > 100.0f) pct = 100.0f;
@@ -370,6 +375,12 @@ esp_err_t gg_sensors_read(gg_reading_t *out) {
                                    s_cal.soil1_water_raw, &out->soil1_pct);
     out->soil2_valid = soil_to_pct(out->soil2_raw, s_cal.soil2_air_raw,
                                    s_cal.soil2_water_raw, &out->soil2_pct);
+
+    if (out->soil1_raw < GG_SOIL_MIN_PLAUSIBLE_RAW &&
+        out->soil1_raw != UINT16_MAX) {
+        ESP_LOGW(TAG, "soil1 raw=%u below plausibility floor - probe likely "
+                      "disconnected", out->soil1_raw);
+    }
 
     if (!out->soil1_valid && out->soil1_raw != UINT16_MAX) {
         /* Deliberately not reported as a percentage. An uncalibrated probe

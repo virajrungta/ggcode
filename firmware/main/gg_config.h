@@ -43,6 +43,18 @@
 // capacitive probes. Worth a gate on a future revision.
 #define GG_SOIL_PERMANENTLY_POWERED  1
 
+/* Floor below which a soil reading is treated as a wiring fault rather than
+ * data. A powered capacitive probe cannot approach 0 — at 3.3V a SEN0193
+ * sits near 2260 counts in air and only falls to roughly 1200-1500 fully
+ * submerged. A hard 0 means the signal wire has lost contact.
+ *
+ * This matters because of which way the maths breaks. Percentage is
+ * 100*(air-raw)/(air-water), so a raw of 0 lands *below* the wet calibration
+ * point and clamps to 100% — "soaking wet". The pump then refuses to run
+ * (>= GG_PUMP_SOIL_WET_THRESHOLD) and the plant is quietly never watered
+ * again. A disconnected probe reads as a flood, not a drought. */
+#define GG_SOIL_MIN_PLAUSIBLE_RAW    200
+
 // --- Light (LDR divider) -------------------------------------------------
 // R9 (LDR) is DEPOPULATED on this prototype build — the schematic has it but
 // the assembled board does not. With R9 absent and R10 (10k) still tying
