@@ -1,0 +1,62 @@
+PODS:
+  - ESPProvision (3.1.0):
+    - ESPProvision/Core (= 3.1.0)
+  - ESPProvision/Core (3.1.0):
+    - SwiftProtobuf (~> 1.22.0)
+  - Flutter (1.0.0)
+  - flutter_blue_plus_darwin (0.0.2):
+    - Flutter
+    - FlutterMacOS
+  - flutter_esp_ble_prov (0.0.1):
+    - ESPProvision
+    - Flutter
+  - permission_handler_apple (9.4.8):
+    - Flutter
+  - shared_preferences_foundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - sqflite_darwin (0.0.4):
+    - Flutter
+    - FlutterMacOS
+  - SwiftProtobuf (1.22.1)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - flutter_blue_plus_darwin (from `.symlinks/plugins/flutter_blue_plus_darwin/darwin`)
+  - flutter_esp_ble_prov (from `.symlinks/plugins/flutter_esp_ble_prov/ios`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
+
+SPEC REPOS:
+  trunk:
+    - ESPProvision
+    - SwiftProtobuf
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  flutter_blue_plus_darwin:
+    :path: ".symlinks/plugins/flutter_blue_plus_darwin/darwin"
+  flutter_esp_ble_prov:
+    :path: ".symlinks/plugins/flutter_esp_ble_prov/ios"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
+  shared_preferences_foundation:
+    :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
+  sqflite_darwin:
+    :path: ".symlinks/plugins/sqflite_darwin/darwin"
+
+SPEC CHECKSUMS:
+  ESPProvision: a24f5156726f9dd4444f856cbed895a7af50aaf9
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_blue_plus_darwin: 20a08bfeaa0f7804d524858d3d8744bcc1b6dbc3
+  flutter_esp_ble_prov: 6cff8544535225431d58e5577706ba2a1a106303
+  permission_handler_apple: 92d754bbaa7361d436db2d6c3c1c2a0fdcec462e
+  shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
+  sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
+  SwiftProtobuf: 7773c4e96a99d7b8ab7cda0fc30a883732ff93b1
+
+PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+
+COCOAPODS: 1.17.0
