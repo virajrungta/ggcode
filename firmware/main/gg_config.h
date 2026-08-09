@@ -109,8 +109,18 @@
 #define GG_STATUS_LED_GPIO       13
 
 // --- Water level ---------------------------------------------------------
-// Analog on GPIO34. Threshold is provisional until the actual sensor is
-// characterised on the bench - see gg_sensors.c.
+// Analog input on GPIO34, expecting a 0-3.3V sensor.
+//
+// !! The part selected for this build (DFRobot SEN0204, XKC-Y25-T12V) does
+// NOT match this input. It is a 5-24V *digital* sensor whose output high
+// equals its supply rail. Two consequences:
+//   1. J4 supplies 3.3V, below its 5V minimum, so it cannot run from this
+//      connector at all;
+//   2. powered from 5V its output would put 5V on GPIO34, and ESP32 GPIOs
+//      are not 5V tolerant (~3.6V absolute max). That damages the chip.
+// Either fit a 3.3V analog level sensor, or add a divider/level shifter and
+// a 5V feed on the next board revision.
+#define GG_WLVL_SENSOR_FITTED    0
 #define GG_WLVL_EMPTY_RAW        600
 
 // --- Sampling ------------------------------------------------------------
@@ -142,6 +152,14 @@
 #define GG_PUMP_MIN_INTERVAL_MS      600000    // 10 min between runs
 #define GG_PUMP_SOIL_WET_THRESHOLD   70.0f     // refuse above this
 #define GG_PUMP_WATCHDOG_MS          35000     // > max runtime; catches hangs
+
+// --- Cloud ---------------------------------------------------------------
+// Placeholder broker settings. Per-device credentials are issued at claim
+// time and stored in NVS; these are the bootstrap defaults for bench work.
+// Production must be mqtts:// on 8883 — Settings rejects plaintext MQTT in
+// the backend, and the firmware should not be the weak link.
+#define GG_MQTT_URI              "mqtt://10.0.0.164:1883"
+#define GG_MQTT_PASSWORD         ""
 
 // --- NVS keys ------------------------------------------------------------
 #define GG_NVS_NAMESPACE         "gg"

@@ -288,6 +288,12 @@ static float light_to_estimate(uint16_t raw) {
 // --- water level ---------------------------------------------------------
 
 bool gg_sensors_reservoir_empty(void) {
+#if !GG_WLVL_SENSOR_FITTED
+    /* No compatible level sensor on this build. Reporting "empty" would
+     * permanently block watering; reporting "full" is the honest default
+     * since the pump's other interlocks still bound the worst case. */
+    return false;
+#endif
     if (!s_adc) return false;
     uint16_t raw = read_adc_median(GG_WLVL_ADC_CHANNEL);
     if (raw == UINT16_MAX) return false;  // unknown != empty
