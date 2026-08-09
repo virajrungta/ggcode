@@ -5,6 +5,7 @@ import '../../core/providers.dart';
 import '../../design/components.dart';
 import '../../design/mesh_background.dart';
 import '../../design/tokens.dart';
+import '../onboarding/pair_pot_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -91,7 +92,10 @@ class SettingsScreen extends ConsumerWidget {
                         icon: Icons.bluetooth_rounded,
                         label: 'Pair a new pot',
                         chevron: true,
-                        onTap: () => _soon(context, 'Pot pairing'),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const PairPotScreen()),
+                        ),
                       ),
                       const _Divider(),
                       _Row(

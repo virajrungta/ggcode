@@ -350,6 +350,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.2"
+  flutter_esp_ble_prov:
+    dependency: "direct main"
+    description:
+      name: flutter_esp_ble_prov
+      sha256: "3cf8018a219f595e444fd4d543f71a6e6f02fedc1212e2c1506d5a45371aa9ef"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.7"
   flutter_lints:
     dependency: "direct dev"
     description:

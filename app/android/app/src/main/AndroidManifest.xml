@@ -1,4 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Android 12+ split Bluetooth into SCAN/CONNECT. neverForLocation tells
+         the system we do not derive location from BLE, which avoids forcing a
+         location-permission prompt on modern devices. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Pre-12 devices required these instead; maxSdkVersion keeps them from
+         being requested on newer Android, where they would be redundant. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <!-- Scanning on Android < 12 returned zero results without location
+         permission, which is the most common cause of "no devices found". -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="greengenius"
         android:name="${applicationName}"

@@ -6,6 +6,7 @@ import '../../core/providers.dart';
 import '../../design/components.dart';
 import '../../design/mesh_background.dart';
 import '../../design/tokens.dart';
+import '../onboarding/pair_pot_screen.dart';
 import 'widgets/attention_card.dart';
 import 'widgets/bento_metrics.dart';
 import 'widgets/pot_hero.dart';
@@ -66,12 +67,24 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 ],
                 data: (list) => list.isEmpty
                     ? [
-                        const SliverFillRemaining(
+                        SliverFillRemaining(
                           hasScrollBody: false,
                           child: GGEmptyState(
                             icon: Icons.eco_rounded,
                             title: 'No pots yet',
                             body: 'Pair a GreenGenius pot to start tracking it.',
+                            action: SizedBox(
+                              height: 50,
+                              child: FilledButton.icon(
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                      builder: (_) => const PairPotScreen()),
+                                ),
+                                icon: const Icon(
+                                    Icons.bluetooth_searching_rounded, size: 18),
+                                label: const Text('Pair a pot'),
+                              ),
+                            ),
                           ),
                         ),
                       ]
