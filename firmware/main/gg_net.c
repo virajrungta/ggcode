@@ -405,15 +405,30 @@ bool gg_net_is_provisioned(void) {
 
 esp_err_t gg_net_start_provisioning(const char *service_name,
                                     const char *pop) {
-    wifi_prov_security2_params_t sec_params = {0};
-    // Security2 (SRP6a). Security1 is a shared-key scheme; Security2 does a
-    // proper password-authenticated key exchange.
-    sec_params.salt = NULL;
-    sec_params.salt_len = 0;
-    sec_params.verifier = NULL;
-    sec_params.verifier_len = 0;
+    /* The manager must be initialised with a transport scheme before it can
+     * start. Missing this produced "Provisioning manager not initialized" on
+     * the bench — the call returned an error and the device simply sat there
+     * advertising with no way to be configured.
+     *
+     * scheme_ble stands up its own GATT service, which is why app_main runs
+     * either this or our telemetry GATT server, never both: two owners of the
+     * same BLE stack is not a supported configuration. */
+    wifi_prov_mgr_config_t cfg = {
+        .scheme = wifi_prov_scheme_ble,
+        .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM,
+    };
+    esp_err_t err = wifi_prov_mgr_init(cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "wifi_prov_mgr_init failed: %s", esp_err_to_name(err));
+        return err;
+    }
 
-    ESP_LOGI(TAG, "starting BLE provisioning as %s", service_name);
+    /* Security1 uses the claim code as a proof-of-possession. Security2
+     * (SRP6a) is stronger but needs a salt/verifier pair generated per device
+     * at manufacture; wire that in when there is a provisioning step in the
+     * production flow. Either way the credentials are encrypted in transit —
+     * this is not a plaintext characteristic. */
+    ESP_LOGI(TAG, "starting BLE provisioning as %s (pop=%s)", service_name, pop);
     return wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, pop,
                                             service_name, NULL);
 }

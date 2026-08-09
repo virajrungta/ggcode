@@ -16,6 +16,7 @@
 
 extern "C" {
 #include "gg_config.h"
+#include "gg_net.h"
 #include "gg_pump.h"
 #include "gg_sensors.h"
 }
@@ -63,6 +64,7 @@ static void fill_telemetry(gg_telemetry_t *out) {
 
     uint8_t flags = gg_pump_is_running() ? GG_FLAG_PUMP_ON : 0;
     if (gg_pump_reservoir_empty()) flags |= GG_FLAG_RESERVOIR_LOW;
+    flags |= gg_net_status_flags();
 
     gg_sensors_pack(&r, (uint32_t)(esp_timer_get_time() / 1000000), flags, out);
 }
@@ -151,8 +153,22 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
 // --- pump events ---------------------------------------------------------
 
 static void on_pump_event(const char *reason, uint32_t duration_ms) {
-    // Phase 5 forwards these to gg/v1/{id}/event; logged until then.
     ESP_LOGI(TAG, "pump event: %s (%lums)", reason, (unsigned long)duration_ms);
+
+    char data[96];
+    snprintf(data, sizeof(data), "{\"duration_s\":%.1f,\"reason\":\"%s\"}",
+             duration_ms / 1000.0f, reason);
+    // pump_stopped is what the backend turns into a care_event; "started" is
+    // noise by comparison since the stop carries the actual duration.
+    gg_net_publish_event(strcmp(reason, "started") == 0 ? "pump_started"
+                                                        : "pump_stopped", data);
+}
+
+/* Cloud pump commands land here. They run through gg_pump_start exactly like a
+ * BLE command does — arriving over the network is not authorisation to bypass
+ * the interlocks. The returned string becomes the MQTT ack. */
+static const char *on_cloud_pump(uint32_t duration_ms) {
+    return gg_pump_result_str(gg_pump_start(duration_ms, "cloud"));
 }
 
 // --- telemetry task ------------------------------------------------------
@@ -173,32 +189,40 @@ static void telemetry_task(void *) {
     TickType_t last = xTaskGetTickCount();
 
     for (;;) {
+        /* One sensor read per cycle, shared by the BLE frame, the cloud queue
+         * and the log. The previous version read everything twice, which for
+         * the ADC channels meant 18 conversions instead of 9 and for the DHT
+         * relied on the 2s cache to hide a second bit-banged transaction. */
+        gg_reading_t r;
+        gg_sensors_read(&r);
+
+        uint8_t flags = gg_pump_is_running() ? GG_FLAG_PUMP_ON : 0;
+        if (gg_pump_reservoir_empty()) flags |= GG_FLAG_RESERVOIR_LOW;
+        flags |= gg_net_status_flags();
+
         gg_telemetry_t packed;
-        fill_telemetry(&packed);
+        gg_sensors_pack(&r, (uint32_t)(esp_timer_get_time() / 1000000), flags,
+                        &packed);
+
+        gg_net_queue_reading(&r, packed.flags);
 
         if (s_telemetry_chr && s_live_subscribed) {
             s_telemetry_chr->setValue((uint8_t *)&packed, sizeof(packed));
             s_telemetry_chr->notify();
         }
 
-        // Bring-up detail: raw counts and mV alongside the packed frame, so a
-        // sensor can be judged before any calibration exists for it.
-        gg_reading_t raw;
-        gg_sensors_read(&raw);
         ESP_LOGI(TAG,
                  "RAW soil1=%u(%dmV) soil2=%u(%dmV) light=%u(%dmV) wlvl=%u(%dmV)",
-                 raw.soil1_raw, gg_sensors_raw_to_mv(raw.soil1_raw),
-                 raw.soil2_raw, gg_sensors_raw_to_mv(raw.soil2_raw),
-                 raw.light_raw, gg_sensors_raw_to_mv(raw.light_raw),
-                 raw.wlvl_raw,  gg_sensors_raw_to_mv(raw.wlvl_raw));
-        ESP_LOGI(TAG, "light_est=%.1f%%  temp=%.1fC rh=%.1f%%  flags=0x%02X",
-                 raw.light_valid ? raw.light_est : -1.0f,
-                 raw.temp_valid ? raw.temp_c : -99.0f,
-                 raw.rh_valid ? raw.rh : -1.0f,
-                 packed.flags);
+                 r.soil1_raw, gg_sensors_raw_to_mv(r.soil1_raw),
+                 r.soil2_raw, gg_sensors_raw_to_mv(r.soil2_raw),
+                 r.light_raw, gg_sensors_raw_to_mv(r.light_raw),
+                 r.wlvl_raw,  gg_sensors_raw_to_mv(r.wlvl_raw));
+        ESP_LOGI(TAG, "soil1=%.1f%% temp=%.1fC rh=%.1f%% net=%d flags=0x%02X",
+                 r.soil1_valid ? r.soil1_pct : -1.0f,
+                 r.temp_valid ? r.temp_c : -99.0f,
+                 r.rh_valid ? r.rh : -1.0f,
+                 (int)gg_net_get_state(), packed.flags);
 
-        /* Fast cadence only while someone is watching. Holding 1Hz plus a 15ms
-         * connection interval continuously is a real battery cost on the phone. */
         TickType_t period = pdMS_TO_TICKS(
             s_live_subscribed ? GG_LIVE_INTERVAL_MS : GG_SAMPLE_INTERVAL_MS);
         vTaskDelayUntil(&last, period);
@@ -229,10 +253,27 @@ extern "C" void app_main() {
                       "until the app completes the air/water calibration");
     }
 
-    // Per-device name so multiple pots are distinguishable in the app's scan
-    // list. The original firmware advertised "Green Genius" on every unit.
+    /* Network first now, because whether we own the BLE stack depends on it.
+     * gg_net_init only brings up Wi-Fi/netif; it does not touch BLE. */
+    ESP_ERROR_CHECK(gg_net_init(on_cloud_pump));
+
     char adv_name[16];
     snprintf(adv_name, sizeof(adv_name), "GG-%s", s_device_id + 6);
+
+    if (!gg_net_is_provisioned()) {
+        /* Unprovisioned: the provisioning manager owns BLE and runs its own
+         * GATT service. Our telemetry server is not started — two owners of
+         * one BLE stack is not a supported configuration. The pot reboots
+         * into the normal path once credentials are stored. */
+        ESP_LOGI(TAG, "no Wi-Fi credentials - BLE provisioning only");
+        gg_net_start_provisioning(adv_name, gg_net_claim_code());
+
+        xTaskCreate(heartbeat_task, "heartbeat", 2048, nullptr, 2, nullptr);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Wi-Fi credentials found - connecting");
+    gg_net_start();
 
     NimBLEDevice::init(adv_name);
     NimBLEDevice::setSecurityPasskey(derive_passkey());
@@ -271,10 +312,15 @@ extern "C" void app_main() {
         CHR_COMMAND, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC);
     cmd->setCallbacks(new CommandCallbacks());
 
-    // Claim token is issued by gg_net once the device reaches the backend;
-    // exposed here so the characteristic exists from first boot.
-    svc->createCharacteristic(
+    NimBLECharacteristic *claim = svc->createCharacteristic(
         CHR_CLAIM_TOKEN, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC);
+    {
+        char json[160];
+        snprintf(json, sizeof(json),
+                 "{\"device_id\":\"%s\",\"claim_code\":\"%s\"}",
+                 s_device_id, gg_net_claim_code());
+        claim->setValue((uint8_t *)json, strlen(json));
+    }
 
     svc->start();
     server->start();
