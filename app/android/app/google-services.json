@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "692586410505",
+    "project_id": "greengenius-b9d6f",
+    "storage_bucket": "greengenius-b9d6f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:692586410505:android:2af6de0218363c2fabbed8",
+        "android_client_info": {
+          "package_name": "com.greengenius.greengenius"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAa013BGkJHN5Wb04gC7xowy1_ySasGrn0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

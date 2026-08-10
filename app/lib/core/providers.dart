@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'api/api_client.dart';
+import 'auth/auth_service.dart';
 import 'api/models.dart';
 
 /// Explicit override, e.g.
@@ -33,10 +34,23 @@ String resolveApiUrl() {
   return 'http://localhost:8000';
 }
 
+final authServiceProvider = Provider<AuthService>((ref) => AuthService());
+
+/// Rebuilds when sign-in state changes, so the client is never left holding a
+/// signed-out user's token.
+final authStateProvider = StreamProvider((ref) {
+  return ref.watch(authServiceProvider).authStateChanges;
+});
+
 final apiClientProvider = Provider<ApiClient>((ref) {
+  final auth = ref.watch(authServiceProvider);
   return ApiClient(
     baseUrl: resolveApiUrl(),
     devUser: _devUser.isEmpty ? null : _devUser,
+    // Resolved per request rather than cached: Firebase ID tokens expire
+    // after an hour, and getIdToken() refreshes near expiry. A token captured
+    // once starts returning 401s after an hour of use.
+    tokenProvider: auth.idToken,
   );
 });
 

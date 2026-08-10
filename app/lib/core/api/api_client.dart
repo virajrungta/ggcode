@@ -22,7 +22,7 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({required String baseUrl, this.devUser})
+  ApiClient({required String baseUrl, this.devUser, this.tokenProvider})
       : _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
           connectTimeout: const Duration(seconds: 10),
@@ -30,8 +30,8 @@ class ApiClient {
           headers: {'Content-Type': 'application/json'},
         )) {
     _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        final token = _authToken;
+      onRequest: (options, handler) async {
+        final token = await tokenProvider?.call();
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         } else if (devUser != null) {
@@ -49,10 +49,8 @@ class ApiClient {
   /// Set when GG_AUTH_MODE=dev, so the app runs without Firebase configured.
   final String? devUser;
 
-  String? _authToken;
-
-  /// Supply a Firebase ID token. Once set, it takes precedence over [devUser].
-  void setAuthToken(String? token) => _authToken = token;
+  /// Called before each request to fetch a current Firebase ID token.
+  final Future<String?> Function()? tokenProvider;
 
   Never _rethrow(DioException e) {
     final data = e.response?.data;
