@@ -67,54 +67,27 @@ class ProvisioningService {
   /// the phone's list would let the user pick a network the pot can never
   /// join, and the failure would look like a broken device.
   Future<List<String>> scanNetworks(String deviceName, String proofOfPossession) {
-    return _withDevicePresent(
-      deviceName,
-      () => _plugin.scanWifiNetworks(deviceName, proofOfPossession),
-    );
-  }
-
-  /// Re-scans before an operation that looks the device up by name.
-  ///
-  /// The plugin resolves the device on every call, and a BLE peripheral stops
-  /// advertising while a central is connected to it. So the scan that found
-  /// the pot moments ago does not guarantee the next call can find it, and
-  /// the failure surfaces as "no bluetooth device found with given prefix" —
-  /// which reads like the pot vanished rather than a stale lookup.
-  ///
-  /// One retry after a fresh scan covers the common case without turning a
-  /// genuinely absent device into a long hang.
-  Future<T> _withDevicePresent<T>(
-    String deviceName,
-    Future<T> Function() action,
-  ) async {
-    try {
-      return await action();
-    } catch (_) {
-      await _plugin.scanBleDevices(devicePrefix).timeout(
-            const Duration(seconds: 5),
-            onTimeout: () => <String>[],
-          );
-      // Give the stack a moment to settle after the scan before retrying.
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      return action();
-    }
+    return _plugin.scanWifiNetworks(deviceName, proofOfPossession);
   }
 
   /// Sends credentials. Returns true when the pot reports it joined.
+  ///
+  /// Each plugin call runs its own createESPDevice, which scans for the pot
+  /// by name and connects. A BLE peripheral stops advertising while a central
+  /// is connected, so back-to-back operations race the disconnect — which is
+  /// why the network scan is optional and this is the only call that must
+  /// succeed.
   Future<bool> provision({
     required String deviceName,
     required String proofOfPossession,
     required String ssid,
     required String passphrase,
   }) async {
-    final ok = await _withDevicePresent(
+    final ok = await _plugin.provisionWifi(
       deviceName,
-      () => _plugin.provisionWifi(
-        deviceName,
-        proofOfPossession,
-        ssid,
-        passphrase,
-      ),
+      proofOfPossession,
+      ssid,
+      passphrase,
     );
     return ok ?? false;
   }
@@ -142,6 +115,7 @@ class ProvisioningState {
     this.selectedDevice,
     this.error,
     this.potId,
+    this.networkScanFailed = false,
   });
 
   final ProvisioningStep step;
@@ -150,6 +124,10 @@ class ProvisioningState {
   final String? selectedDevice;
   final String? error;
   final String? potId;
+
+  /// The pot could not be asked for its network list. Not fatal — the user
+  /// types the SSID instead, and provisioning still works.
+  final bool networkScanFailed;
 
   bool get isBusy =>
       step != ProvisioningStep.idle &&
@@ -164,6 +142,7 @@ class ProvisioningState {
     String? selectedDevice,
     String? error,
     String? potId,
+    bool? networkScanFailed,
     bool clearError = false,
   }) {
     return ProvisioningState(
@@ -173,6 +152,7 @@ class ProvisioningState {
       selectedDevice: selectedDevice ?? this.selectedDevice,
       error: clearError ? null : (error ?? this.error),
       potId: potId ?? this.potId,
+      networkScanFailed: networkScanFailed ?? this.networkScanFailed,
     );
   }
 }

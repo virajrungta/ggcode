@@ -66,7 +66,7 @@ class _PairPotScreenState extends ConsumerState<PairPotScreen> {
                   _StepCard(
                     number: 3,
                     title: 'Connect to Wi-Fi',
-                    enabled: state.networks.isNotEmpty,
+                    enabled: state.networks.isNotEmpty || state.networkScanFailed,
                     child: _WifiStep(
                       state: state,
                       ssid: _ssid,
@@ -441,6 +441,19 @@ class _WifiStep extends StatelessWidget {
                   ),
                 );
               },
+            ),
+          ),
+        if (state.networks.isEmpty)
+          TextField(
+            controller: ssid,
+            autocorrect: false,
+            decoration: InputDecoration(
+              labelText: 'Network name (SSID)',
+              helperText: 'Must be 2.4GHz - pots cannot see 5GHz networks',
+              helperMaxLines: 2,
+              filled: true,
+              fillColor: GGColors.surfaceMuted,
+              border: OutlineInputBorder(borderRadius: GGRadius.mAll),
             ),
           ),
         const SizedBox(height: GGSpacing.m),
