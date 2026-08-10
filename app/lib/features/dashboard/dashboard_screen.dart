@@ -7,6 +7,7 @@ import '../../design/components.dart';
 import '../../design/mesh_background.dart';
 import '../../design/tokens.dart';
 import '../onboarding/pair_pot_screen.dart';
+import 'widgets/add_pot_card.dart';
 import 'widgets/attention_card.dart';
 import 'widgets/bento_metrics.dart';
 import 'widgets/pot_hero.dart';
@@ -118,6 +119,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: _Attention(pots: pots).entrance(index: 2),
           ),
         ),
+        const SliverToBoxAdapter(child: SizedBox(height: GGSpacing.l)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: GGSpacing.page,
+            child: const AddPotCard().entrance(index: 3),
+          ),
+        ),
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ];
 }
@@ -147,6 +155,18 @@ class _CollapsingHeader extends StatelessWidget {
       elevation: 0,
       scrolledUnderElevation: 0,
       actions: [
+        Builder(
+          builder: (context) => Padding(
+            padding: const EdgeInsets.only(right: GGSpacing.s),
+            child: GGTappable(
+              radius: GGRadius.round,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const PairPotScreen()),
+              ),
+              child: const GGIconTile(icon: Icons.add_rounded, size: 38),
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.only(right: GGSpacing.m),
           child: GGTappable(
