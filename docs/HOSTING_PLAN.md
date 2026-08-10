@@ -1,154 +1,146 @@
-# Hosting plan — getting off "start the server first"
+# Hosting plan — $0 prototype
 
-Goal: the app works when you open it, without a laptop running `uvicorn`.
+Goal: the app works when you open it, with no laptop running `uvicorn`, and
+nothing on a credit card.
 
-Researched Feb 2026. Prices and free tiers move; re-check before committing.
+Researched Feb 2026. Free tiers move; re-check before relying on this.
 
 ---
 
-## The constraint that rules most options out
+## Why free is hard, and the change that makes it easy
 
-**The pot publishes 24/7 and the ingest worker must hold an open MQTT
-connection.** That single fact eliminates most free tiers:
+Every free tier sleeps:
 
-| Platform | Free tier | Verdict |
+| Platform | Free tier | Sleeps? |
 |---|---|---|
-| Render | 750 hrs/mo, **spins down after 15 min idle**, ~1 min cold start | ✗ A spun-down ingest worker drops the MQTT session. Telemetry published while it sleeps is gone — QoS 1 only helps if a subscriber exists. |
-| Railway | No free tier. $5/mo hobby, includes $5 credit | ✓ |
-| Fly.io | No free tier in 2026. Per-second billing, no seat fee | ✓ cheapest raw compute |
+| Render | 750 hrs/mo, Postgres included, no card | after 15 min, ~1 min cold start |
+| Koyeb | 512 MB / 0.1 vCPU | after 1 hr, **cannot be disabled** |
+| Fly.io | trial only in 2026 | n/a |
+| Railway | none ($5/mo minimum) | n/a |
+| Oracle Cloud | 4 vCPU / 24 GB ARM, forever | **no** — but signup is famously painful |
 
-Anything that sleeps on idle is disqualified for the worker. A web-only API
-could tolerate it; the ingest path cannot.
+Sleeping is fatal to **one** part of the current design: the MQTT ingest
+worker holds a long-lived subscription, and a sleeping subscriber misses
+telemetry entirely. QoS 1 only helps when a subscriber exists.
 
-## Recommended stack
+**So drop MQTT for the prototype.** Have the pot `POST` telemetry over HTTPS
+instead. Then sleeping stops mattering — the POST itself wakes the service.
 
-Three pieces, roughly **$5/month**:
+### Commands ride back in the response
+
+The obvious objection: MQTT gave us instant downlink for "water now". HTTP is
+request/response, so the server cannot push.
+
+It does not need to. **The telemetry POST returns any pending commands.**
 
 ```
-  ESP32 ──mqtts:8883──▶ HiveMQ Cloud (free, 100 devices)
-                              │
-                              ▼
-                    Fly.io: api + ingest      ~$5/mo
-                              │
-                              ▼
-                    Neon Postgres (free, 0.5 GB)
+POST /v1/ingest/telemetry
+  { "device_id": "...", "samples": [ ... ] }
+
+200 OK
+  { "accepted": 12,
+    "commands": [ {"id": "...", "op": "pump",
+                   "args": {"duration_s": 5}, "expires_at": 1770000000} ] }
 ```
 
-**MQTT — HiveMQ Cloud free tier.** 100 device connections, TLS included. We
-need two (pot + ingest worker). EMQX Serverless free is the alternative and
-allows up to 1000 connections with a monthly quota; either is comfortable.
-Self-hosting EMQX means running and securing another service for no benefit
-at this scale.
+No polling, no second connection, no broker. Worst-case latency for a
+watering command is one telemetry interval.
 
-**Compute — Fly.io.** Two processes from one image: `api` (uvicorn) and
-`ingest` (the MQTT worker). Per-second billing, no seat fee, and it does not
-sleep. Railway is the easier alternative — app and Postgres on one platform
-for $5/mo — at slightly higher cost and less control.
+That interval is a knob: 60s in production, and the firmware can drop to ~10s
+for a few minutes after a BLE session, so tapping "Water now" while stood next
+to the pot feels immediate. The interlocks and `expires_at` handling are
+unchanged — the transport moved, the safety rules did not.
 
-**Database — Neon free tier.** 0.5 GB, scale-to-zero with a ~0.5s cold start
-on first query after idle. Supabase is the alternative: always-on compute,
-500 MB, but free projects **pause after 7 days idle** — irrelevant here since
-the pot writes continuously.
+### What this costs
 
-### Drop TimescaleDB for now
+| Lost | Matters? |
+|---|---|
+| Instant downlink | No — bounded by the telemetry interval, tunable |
+| Last-will (offline detection) | Mildly — infer offline from "no POST in 3 intervals" instead |
+| Broker fan-out to many subscribers | Not at one pot |
+| ~1 min cold start after idle | The app feels slow to open occasionally |
 
-Neon and Supabase are plain Postgres — no `timescaledb` extension.
-
-That is already handled: migration `0002_timescale` checks
-`pg_available_extensions` and skips the hypertable, compression and continuous
-aggregates when unavailable, leaving `readings` an ordinary indexed table.
-
-At one pot, 60s sampling is ~43k rows/month. Plain Postgres handles that
-without noticing. Timescale earns its place at fleet scale, not now, and
-`GET /v1/pots/{id}/readings` already aggregates in SQL either way.
-
-Revisit when either is true: more than ~50 pots, or raw retention beyond a
-few months.
+All of it is recoverable later: `contracts/telemetry.md` and the MQTT worker
+stay in the repo, and switching back is a firmware flag plus redeploying the
+worker.
 
 ---
 
-## The actual blocker is authentication, not hosting
+## The free stack
 
-**The backend cannot be deployed publicly as it stands.** It runs with
-`GG_AUTH_MODE=dev`, which trusts an `X-Dev-User` header — anyone who knows the
-URL is any user they choose.
+```
+  ESP32 ──HTTPS POST──▶ Render free web service ──▶ Neon Postgres (free)
+              ◀── pending commands in response
+                              ▲
+  iPhone ────HTTPS───────────┘
+```
 
-`Settings._guard_production` already refuses to boot with `GG_ENV=production`
-and dev auth, so this cannot ship by accident. But it means **step one is
-auth, not infrastructure.**
+| Piece | Service | Free tier |
+|---|---|---|
+| API | Render web service | 750 hrs/mo, no card required |
+| Database | Neon Postgres | 0.5 GB, scale-to-zero |
+| Auth | Firebase Auth | 50k MAU |
+| **Total** | | **$0** |
 
-### Use the Firebase project that already exists
+Render's own Postgres is an alternative to Neon and keeps everything on one
+platform; Neon's free tier is more generous on retention.
 
-The backend's Firebase verification is written and tested — 15 tests covering
-expiry, wrong audience, wrong issuer, unknown key id, foreign signatures, and
-`alg:none`. The old Expo app already used project `greengenius-b9d6f`.
+**Timescale is out.** Migration `0002_timescale` already checks
+`pg_available_extensions` and skips the hypertable, compression and
+aggregates when it is missing, leaving `readings` an ordinary indexed table.
+One pot at 60s sampling is ~43k rows/month — plain Postgres does not notice.
 
-What is missing is only the client half:
+---
 
-1. Download `google-services.json` (Android) and `GoogleService-Info.plist`
-   (iOS) from the Firebase console. **These come from your account — I cannot
-   fetch them.**
-2. Add `firebase_core` + `firebase_auth` to the Flutter app
-3. Build a sign-in screen; attach the ID token via `ApiClient.setAuthToken`
-4. Flip the deployed backend to `GG_AUTH_MODE=firebase`
+## The real blocker is still auth
 
-Roughly a day's work, and it is the gate on everything else.
+**The backend cannot go public as it stands.** `GG_AUTH_MODE=dev` trusts an
+`X-Dev-User` header, so a public URL with it enabled is an open database.
+`Settings._guard_production` refuses to boot that way, which is the point.
 
-> Considered and rejected: moving the whole backend to Firebase (Firestore +
-> Cloud Functions). Firestore bills per document write, which is a poor fit
-> for 43k+ sensor rows a month, and it has no time-bucketed aggregation — the
-> chart endpoint would have to read every row and reduce in memory. Firebase
-> stays what it is good at: identity.
+Firebase Auth is already written and tested server-side — 15 tests covering
+expiry, wrong audience, wrong issuer, unknown key id, foreign signatures and
+`alg:none`. Only the client half is missing, and it needs two files **from
+your Firebase console** that I cannot fetch:
+
+- `google-services.json` → `app/android/app/`
+- `GoogleService-Info.plist` → `app/ios/Runner/`
+
+Project `greengenius-b9d6f` already exists from the old Expo app.
+
+### Device auth is separate
+
+The pot has no Firebase account, so `/v1/ingest/telemetry` authenticates with
+the per-device secret already issued at claim time and stored argon2-hashed in
+`devices.mqtt_secret_hash`. Same secret, different transport — sent as a
+bearer token over TLS instead of an MQTT password.
 
 ---
 
 ## Sequence
 
-**1. Firebase Auth end-to-end** *(blocks everything; needs your config files)*
-Sign-in screen, token attached to requests, backend switched to `firebase`.
+1. **Firebase Auth in the app** — sign-in screen, token on requests. *Blocks
+   deployment; needs your two config files.*
+2. **HTTP ingest endpoint** — `POST /v1/ingest/telemetry`, device-secret auth,
+   pending commands in the response. Reuses the existing validation and
+   clock-skew guards.
+3. **Firmware HTTP mode** — swap `gg_net`'s MQTT publish for an HTTPS POST
+   behind a compile flag, so MQTT stays available.
+4. **Neon project** — point `GG_DATABASE_URL` at it, `alembic upgrade head`.
+5. **Deploy to Render** — existing Dockerfile, secrets in the dashboard.
+6. **Point app and pot at the URL** — no more LAN IP, so no rebuild when the
+   router changes its mind.
 
-**2. Managed Postgres**
-Create a Neon project, point `GG_DATABASE_URL` at it, run `alembic upgrade
-head`. The Timescale migration self-skips.
-
-**3. MQTT broker**
-HiveMQ Cloud instance; per-device credentials rather than one shared password.
-Update `GG_MQTT_*` and the firmware's `GG_MQTT_URI` to `mqtts://…:8883`.
-
-**4. Deploy**
-`fly.toml` with two processes from the existing `Dockerfile`. Secrets via
-`fly secrets set`, never committed.
-
-**5. Point the app at it**
-`--dart-define=GG_API_URL=https://greengenius.fly.dev`. No more LAN IP, so no
-more rebuilds when the router changes its mind.
-
-**6. Reflash firmware**
-`GG_MQTT_URI` to the cloud broker with TLS. This is when `GG_MQTT_TLS=true`
-starts being enforced — `Settings` rejects plaintext MQTT in production.
-
----
-
-## Costs
-
-| Item | Monthly |
-|---|---|
-| Fly.io — api + ingest | ~$5 |
-| Neon Postgres | $0 (free tier) |
-| HiveMQ Cloud | $0 (free tier) |
-| **Total** | **~$5** |
-
-Railway instead of Fly is also ~$5 and simpler to set up, with Postgres
-included, at the cost of some control.
+Steps 2 and 3 are the real work; the rest is configuration.
 
 ## Things that will bite
 
-- **Do not deploy with dev auth**, even briefly. A public URL with an
-  `X-Dev-User` header is an open database.
-- **Per-device MQTT credentials, and a broker ACL** restricting each device to
-  its own `gg/v1/{device_id}/#` prefix. Without the ACL, one compromised pot
-  can run the pump on every other pot.
-- **Neon's cold start** adds ~0.5s to the first request after idle. Fine for
-  the app; the ingest worker keeps the connection warm anyway.
-- **Free-tier storage is 0.5 GB.** At one pot that is years away, but the
-  retention policy is worth setting before it matters.
+- **Never deploy with dev auth**, not even briefly.
+- **Cold starts.** First request after 15 min idle takes ~1 min. The pot's
+  POST will time out and retry — the firmware must treat that as normal, not
+  as failure.
+- **Free Postgres is 0.5 GB.** Years away at one pot, but set retention before
+  it matters.
+- **Render sleeps on idle, not on a schedule.** A pot posting every 60s keeps
+  it awake continuously, which may consume the 750 hrs/mo faster than
+  expected. If it runs out, lengthen the interval or move to Oracle Cloud.

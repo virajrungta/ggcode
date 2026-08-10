@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import commands, devices, identify, pots
+from app.api.v1 import commands, devices, identify, ingest, pots
 from app.core.config import get_settings
 from app.db.models import Base
 from app.db.session import get_engine
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(pots.router, prefix="/v1")
     app.include_router(commands.router, prefix="/v1")
     app.include_router(identify.router, prefix="/v1")
+    app.include_router(ingest.router, prefix="/v1")
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

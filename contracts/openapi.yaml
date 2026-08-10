@@ -499,7 +499,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CommandOut'
+                $ref: '#/components/schemas/app__api__v1__schemas__CommandOut'
         '422':
           description: Validation Error
           content:
@@ -550,7 +550,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/CommandOut'
+                  $ref: '#/components/schemas/app__api__v1__schemas__CommandOut'
                 title: Response List Commands V1 Pots  Pot Id  Commands Get
         '422':
           description: Validation Error
@@ -614,6 +614,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /v1/ingest/telemetry:
+    post:
+      tags:
+      - ingest
+      summary: Ingest Telemetry
+      operationId: ingest_telemetry_v1_ingest_telemetry_post
+      parameters:
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelemetryIn'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /v1/ingest/ack:
+    post:
+      tags:
+      - ingest
+      summary: Ack Command
+      operationId: ack_command_v1_ingest_ack_post
+      parameters:
+      - name: device_id
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Device Id
+      - name: authorization
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AckIn'
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /health:
     get:
       tags:
@@ -632,6 +702,24 @@ paths:
                 title: Response Health Health Get
 components:
   schemas:
+    AckIn:
+      properties:
+        id:
+          type: string
+          title: Id
+        result:
+          type: string
+          title: Result
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - id
+      - result
+      title: AckIn
     Body_identify_plant_v1_pots__pot_id__identify_post:
       properties:
         file:
@@ -692,61 +780,6 @@ components:
       - mqtt_port
       - mqtt_tls
       title: ClaimResponse
-    CommandOut:
-      properties:
-        id:
-          type: string
-          title: Id
-        device_id:
-          type: string
-          title: Device Id
-        op:
-          type: string
-          title: Op
-        args:
-          additionalProperties: true
-          type: object
-          title: Args
-        state:
-          type: string
-          title: State
-        issued_at:
-          type: string
-          format: date-time
-          title: Issued At
-        expires_at:
-          type: string
-          format: date-time
-          title: Expires At
-        acked_at:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-          title: Acked At
-        result:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Result
-        error:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Error
-      type: object
-      required:
-      - id
-      - device_id
-      - op
-      - args
-      - state
-      - issued_at
-      - expires_at
-      - acked_at
-      - result
-      - error
-      title: CommandOut
     DeviceOut:
       properties:
         id:
@@ -894,6 +927,29 @@ components:
       - name
       - probability
       title: IdentifySuggestion
+    IngestResponse:
+      properties:
+        accepted:
+          type: integer
+          title: Accepted
+        rejected:
+          type: integer
+          title: Rejected
+        commands:
+          items:
+            $ref: '#/components/schemas/app__api__v1__ingest__CommandOut'
+          type: array
+          title: Commands
+        server_time:
+          type: integer
+          title: Server Time
+      type: object
+      required:
+      - accepted
+      - rejected
+      - commands
+      - server_time
+      title: IngestResponse
     LatestOut:
       properties:
         pot_id:
@@ -1094,6 +1150,49 @@ components:
       - soil_pct
       - lux
       title: ReadingOut
+    SampleIn:
+      properties:
+        ts:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Ts
+        temp_c:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Temp C
+        rh:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Rh
+        soil_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Soil Pct
+        soil2_pct:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Soil2 Pct
+        lux:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Lux
+        batt_mv:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Batt Mv
+        flags:
+          type: integer
+          title: Flags
+          default: 0
+      type: object
+      title: SampleIn
     SeriesOut:
       properties:
         pot_id:
@@ -1166,6 +1265,24 @@ components:
       - scientific_name
       - common_name
       title: SpeciesOut
+    TelemetryIn:
+      properties:
+        v:
+          type: integer
+          title: V
+          default: 1
+        device_id:
+          type: string
+          title: Device Id
+        samples:
+          items:
+            $ref: '#/components/schemas/SampleIn'
+          type: array
+          title: Samples
+      type: object
+      required:
+      - device_id
+      title: TelemetryIn
     ValidationError:
       properties:
         loc:
@@ -1204,3 +1321,80 @@ components:
       required:
       - duration_s
       title: WaterRequest
+    app__api__v1__ingest__CommandOut:
+      properties:
+        id:
+          type: string
+          title: Id
+        op:
+          type: string
+          title: Op
+        args:
+          additionalProperties: true
+          type: object
+          title: Args
+        expires_at:
+          type: integer
+          title: Expires At
+      type: object
+      required:
+      - id
+      - op
+      - args
+      - expires_at
+      title: CommandOut
+    app__api__v1__schemas__CommandOut:
+      properties:
+        id:
+          type: string
+          title: Id
+        device_id:
+          type: string
+          title: Device Id
+        op:
+          type: string
+          title: Op
+        args:
+          additionalProperties: true
+          type: object
+          title: Args
+        state:
+          type: string
+          title: State
+        issued_at:
+          type: string
+          format: date-time
+          title: Issued At
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        acked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Acked At
+        result:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Result
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - id
+      - device_id
+      - op
+      - args
+      - state
+      - issued_at
+      - expires_at
+      - acked_at
+      - result
+      - error
+      title: CommandOut
