@@ -75,6 +75,7 @@ class _PairPotScreenState extends ConsumerState<PairPotScreen> {
                       obscure: _obscure,
                       onToggleObscure: () =>
                           setState(() => _obscure = !_obscure),
+                      onSelectNetwork: (n) => setState(() => _ssid.text = n),
                       onSubmit: () => ctrl.provisionAndClaim(
                         claimCode: _claimCode.text.trim(),
                         ssid: _ssid.text.trim(),
@@ -345,6 +346,7 @@ class _WifiStep extends StatelessWidget {
     required this.obscure,
     required this.onToggleObscure,
     required this.onSubmit,
+    required this.onSelectNetwork,
   });
 
   final ProvisioningState state;
@@ -354,6 +356,7 @@ class _WifiStep extends StatelessWidget {
   final bool obscure;
   final VoidCallback onToggleObscure;
   final VoidCallback onSubmit;
+  final ValueChanged<String> onSelectNetwork;
 
   @override
   Widget build(BuildContext context) {
@@ -374,21 +377,71 @@ class _WifiStep extends StatelessWidget {
           ),
         ),
         const SizedBox(height: GGSpacing.m),
+        // A list, not a DropdownButton. The theme sets canvasColor to
+        // transparent so glass surfaces work, and Material's dropdown menu
+        // paints its popup with canvasColor — giving an unreadable menu with
+        // text floating over whatever was behind it. A list also shows every
+        // network at once, which is what you want when picking Wi-Fi.
         if (state.networks.isNotEmpty)
-          DropdownButtonFormField<String>(
-            initialValue: ssid.text.isEmpty ? null : ssid.text,
-            isExpanded: true,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: GGColors.surfaceMuted,
-              border: OutlineInputBorder(borderRadius: GGRadius.mAll),
+          Container(
+            constraints: const BoxConstraints(maxHeight: 230),
+            decoration: BoxDecoration(
+              color: GGColors.surfaceMuted,
+              borderRadius: GGRadius.mAll,
+              border: Border.all(color: GGColors.outline),
             ),
-            hint: const Text('Choose a network'),
-            items: [
-              for (final n in state.networks)
-                DropdownMenuItem(value: n, child: Text(n)),
-            ],
-            onChanged: (v) => ssid.text = v ?? '',
+            clipBehavior: Clip.antiAlias,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: state.networks.length,
+              separatorBuilder: (_, __) => const Divider(
+                  height: 1, thickness: 1, color: GGColors.outline),
+              itemBuilder: (context, i) {
+                final n = state.networks[i];
+                final selected = n == ssid.text;
+                return GGTappable(
+                  radius: 0,
+                  onTap: () => onSelectNetwork(n),
+                  child: Container(
+                    color: selected
+                        ? GGColors.primaryContainer
+                        : Colors.transparent,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: GGSpacing.m, vertical: GGSpacing.m - 3),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selected
+                              ? Icons.check_circle_rounded
+                              : Icons.wifi_rounded,
+                          size: 19,
+                          color: selected
+                              ? GGColors.primary
+                              : GGColors.textTertiary,
+                        ),
+                        const SizedBox(width: GGSpacing.m - 4),
+                        Expanded(
+                          child: Text(
+                            n,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontFamily: kFontFamily,
+                              fontSize: 15,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: selected
+                                  ? GGColors.primaryDark
+                                  : GGColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
         const SizedBox(height: GGSpacing.m),
         TextField(

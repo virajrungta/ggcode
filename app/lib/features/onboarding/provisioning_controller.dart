@@ -92,10 +92,15 @@ class ProvisioningController extends StateNotifier<ProvisioningState> {
         networks: networks,
       );
     } catch (e) {
+      final msg = e.toString().toLowerCase();
       state = state.copyWith(
         step: ProvisioningStep.failed,
-        error: 'Could not read networks from the pot. '
-            'Check the setup code is correct. ($e)',
+        error: msg.contains('no bluetooth device') || msg.contains('prefix')
+            // The pot stops advertising once connected, so a lookup by name
+            // can miss it even though it is right there.
+            ? 'Lost contact with the pot. Tap Search again, then retry.'
+            : 'Could not talk to the pot. Check the setup code matches the '
+                'one shown for this pot — it changes if the pot restarts.',
       );
     }
   }

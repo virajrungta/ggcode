@@ -67,7 +67,37 @@ class ProvisioningService {
   /// the phone's list would let the user pick a network the pot can never
   /// join, and the failure would look like a broken device.
   Future<List<String>> scanNetworks(String deviceName, String proofOfPossession) {
-    return _plugin.scanWifiNetworks(deviceName, proofOfPossession);
+    return _withDevicePresent(
+      deviceName,
+      () => _plugin.scanWifiNetworks(deviceName, proofOfPossession),
+    );
+  }
+
+  /// Re-scans before an operation that looks the device up by name.
+  ///
+  /// The plugin resolves the device on every call, and a BLE peripheral stops
+  /// advertising while a central is connected to it. So the scan that found
+  /// the pot moments ago does not guarantee the next call can find it, and
+  /// the failure surfaces as "no bluetooth device found with given prefix" —
+  /// which reads like the pot vanished rather than a stale lookup.
+  ///
+  /// One retry after a fresh scan covers the common case without turning a
+  /// genuinely absent device into a long hang.
+  Future<T> _withDevicePresent<T>(
+    String deviceName,
+    Future<T> Function() action,
+  ) async {
+    try {
+      return await action();
+    } catch (_) {
+      await _plugin.scanBleDevices(devicePrefix).timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => <String>[],
+          );
+      // Give the stack a moment to settle after the scan before retrying.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      return action();
+    }
   }
 
   /// Sends credentials. Returns true when the pot reports it joined.
@@ -77,11 +107,14 @@ class ProvisioningService {
     required String ssid,
     required String passphrase,
   }) async {
-    final ok = await _plugin.provisionWifi(
+    final ok = await _withDevicePresent(
       deviceName,
-      proofOfPossession,
-      ssid,
-      passphrase,
+      () => _plugin.provisionWifi(
+        deviceName,
+        proofOfPossession,
+        ssid,
+        passphrase,
+      ),
     );
     return ok ?? false;
   }
