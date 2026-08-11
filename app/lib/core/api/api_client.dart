@@ -25,8 +25,12 @@ class ApiClient {
   ApiClient({required String baseUrl, this.devUser, this.tokenProvider})
       : _dio = Dio(BaseOptions(
           baseUrl: baseUrl,
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 30),
+          // Sized for a cold start, not for a warm request. The deployed
+          // backend is on a free tier that spins down after ~15 minutes idle
+          // and took a measured 37s to wake — so the old 10s connect timeout
+          // failed every first request of the day and looked like an outage.
+          connectTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 90),
           headers: {'Content-Type': 'application/json'},
         )) {
     _dio.interceptors.add(InterceptorsWrapper(
@@ -55,6 +59,24 @@ class ApiClient {
   Never _rethrow(DioException e) {
     final data = e.response?.data;
     final detail = data is Map<String, dynamic> ? data['detail'] : null;
+
+    // A timeout against a sleeping free-tier service is the single most
+    // likely failure here, and Dio's own message for it ("The request
+    // connection took longer than...") reads like a bug in the app.
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.sendTimeout) {
+      throw ApiException(
+        null,
+        'The server is waking up. This can take up to a minute after a '
+        'quiet period — pull to refresh and try again.',
+      );
+    }
+
+    if (e.type == DioExceptionType.connectionError) {
+      throw ApiException(null, 'No connection to the server. Check your network.');
+    }
+
     throw ApiException(
       e.response?.statusCode,
       detail?.toString() ?? e.message ?? 'Network error',
