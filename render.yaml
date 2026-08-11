@@ -1,0 +1,47 @@
+# Render blueprint — free-tier deployment.
+#
+# Deliberately a single web service, no worker. The MQTT ingest worker needs a
+# permanently open subscription, and every free tier sleeps on idle; a sleeping
+# subscriber loses telemetry outright. The pot POSTs to /v1/ingest/telemetry
+# instead, which wakes the service, so spin-down costs latency rather than data.
+# See docs/HOSTING_PLAN.md.
+
+services:
+  - type: web
+    name: greengenius-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+
+    envVars:
+      - key: GG_ENV
+        value: development
+
+      # Firebase ID tokens, verified against Google's JWKS. Never `dev` here:
+      # that mode trusts an X-Dev-User header, and a public URL with it enabled
+      # is an open database. Settings._guard_production also refuses to boot
+      # with dev auth when GG_ENV=production.
+      - key: GG_AUTH_MODE
+        value: firebase
+      - key: GG_FIREBASE_PROJECT_ID
+        value: greengenius-b9d6f
+
+      # Set in the dashboard, not here. Render's free Postgres expires; Neon's
+      # free tier does not, which is why the database is external.
+      - key: GG_DATABASE_URL
+        sync: false
+
+      # The app talks to the API directly; no browser origin needs allowing.
+      # Left empty rather than "*" so a wildcard cannot creep in later.
+      - key: GG_CORS_ORIGINS
+        value: "[]"
+
+      - key: GG_SIMULATE
+        value: "0"
+
+      - key: PYTHON_VERSION
+        value: "3.12.7"
