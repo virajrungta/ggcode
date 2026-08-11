@@ -135,6 +135,12 @@
 #define GG_SAMPLE_INTERVAL_MS    60000     // 60s, per contracts/telemetry.md
 #endif
 #define GG_PUBLISH_INTERVAL_MS   300000    // 5 min
+
+// Floor on how often a POST may be attempted, regardless of what the batch is
+// doing. Without it a failed send retries every second: the batch stays full,
+// so the "flush when full" condition never clears, and a backend that is down
+// gets hammered while the pot burns radio power.
+#define GG_PUBLISH_MIN_GAP_MS    15000
 #define GG_BATCH_MAX_SAMPLES     12
 
 // Bounded by the DHT, not by preference.
@@ -164,11 +170,16 @@
 // broker on a network we no longer use, and the pot reported nothing for days
 // without any error to show for it.
 //
-// Bonjour rather than a raw IP: the Mac's DHCP lease changes, and a hardcoded
-// address is what caused the silent failure above. Change to the https:// URL
-// once the backend is deployed.
-#define GG_API_BASE              "http://MacBook-Air.local:8000"
-#define GG_HTTP_TIMEOUT_MS       15000    // free tiers cold-start slowly
+// The deployed backend, so the pot reports whether or not the Mac is awake.
+// TLS is verified against the ESP-IDF certificate bundle (see gg_http.c);
+// plain http:// here would put the device secret on the wire in clear.
+#define GG_API_BASE              "https://ggcode-nkdo.onrender.com"
+
+// Render's free tier spins down after ~15 minutes idle and takes ~35-40s to
+// wake -- measured at 37s on the first request after deploy. A timeout under
+// that turns every cold start into a lost batch, so this is deliberately far
+// longer than a normal request needs.
+#define GG_HTTP_TIMEOUT_MS       60000
 
 // --- NVS keys ------------------------------------------------------------
 #define GG_NVS_NAMESPACE         "gg"

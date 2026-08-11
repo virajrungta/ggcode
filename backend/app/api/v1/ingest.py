@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from argon2 import PasswordHasher
@@ -126,6 +126,20 @@ async def ingest_telemetry(
     rows: list[Reading] = []
     rejected = 0
 
+    # `readings` is keyed on (time, device_id), and every sample that falls
+    # back to arrival time gets the *same* arrival time -- so a batch with two
+    # unsynced samples collided on the primary key and failed the whole
+    # request with a 500. That is not an edge case: a pot batches readings
+    # from the moment it boots, and SNTP does not sync for several seconds
+    # after, so it happened on every single boot.
+    #
+    # Nudging by a millisecond keeps each sample distinct, which dropping the
+    # duplicates would not. Forwards, not backwards: samples arrive in
+    # chronological order, and stepping backwards assigned the *earliest*
+    # timestamp to the last sample, silently reversing every unsynced batch.
+    # A few milliseconds into the future is far inside the skew guard.
+    used: set[datetime] = set()
+
     for sample in body.samples:
         raw = sample.model_dump()
 
@@ -136,6 +150,10 @@ async def ingest_telemetry(
         if ts is None:
             rejected += 1
             continue
+
+        while ts in used:
+            ts += timedelta(milliseconds=1)
+        used.add(ts)
 
         cleaned, bad_fields = clamp_sample(raw)
         if bad_fields:

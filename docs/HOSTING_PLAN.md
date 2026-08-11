@@ -193,3 +193,37 @@ come back **naive**. asyncpg interprets a naive datetime for a `timestamptz`
 column in the server's local zone and converts it — every row silently landed
 7 hours late, and every chart would have moved with it. The script now stamps
 UTC onto naive values before insert.
+
+
+---
+
+## Deployed: https://ggcode-nkdo.onrender.com
+
+Verified live on 2026-08-11: `/health` 200, `/docs` and `/openapi.json` 404,
+unauthenticated 401, `X-Dev-User` 401, device bootstrap and telemetry both
+round-tripping into Neon.
+
+**Cold start measured at 37s.** That is the first request after a spin-down,
+and it set `GG_HTTP_TIMEOUT_MS` on the device to 60s — a shorter timeout turns
+every cold start into a lost batch.
+
+### Two bugs the real deployment surfaced
+
+Neither showed up locally, and both would have been invisible without the pot
+actually posting.
+
+**Stack overflow in `gg_publish`.** 4 KB was ample for MQTT and nowhere near
+enough for a TLS handshake plus certificate-bundle verification, which run on
+the calling task's stack. The board reboot-looped on the first HTTPS POST,
+which presents as a hang rather than as a stack problem. Now 12 KB.
+
+**Primary-key collision on unsynced batches.** `readings` is keyed on
+`(time, device_id)`, and every sample whose `ts` is null falls back to arrival
+time — the *same* arrival time. Two such samples in one batch collided and
+500'd the entire request. A pot batches from the moment it boots and SNTP
+syncs seconds later, so this hit on every boot; the real pot lost its first
+batch to it. Samples are now nudged forward by a millisecond each.
+
+The direction matters: nudging backwards gave the earliest timestamp to the
+last sample and silently reversed the batch. Caught by the regression test,
+not by inspection.

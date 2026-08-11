@@ -442,3 +442,58 @@ class TestBootstrap:
         )
         async with get_sessionmaker()() as db:
             assert (await db.get(Device, seeded_device)).fw_version == "9.9.9"
+
+
+class TestUnsyncedClockBatch:
+    """A batch from a pot that has not reached SNTP yet.
+
+    `readings` is keyed on (time, device_id), and every sample falling back to
+    arrival time got the *same* arrival time — so the batch collided on the
+    primary key and the whole request 500'd. This is not an edge case: a pot
+    batches from the moment it boots and SNTP syncs seconds later, so it hit
+    on every boot, and the real pot lost its first batch to it.
+    """
+
+    async def test_multiple_null_timestamps_are_all_stored(self, client, claimed):
+        device_id, secret, _ = claimed
+
+        r = await client.post(
+            "/v1/ingest/telemetry",
+            json={"v": 1, "device_id": device_id, "samples": [
+                {"ts": None, "temp_c": 20.0},
+                {"ts": None, "temp_c": 21.0},
+                {"ts": None, "temp_c": 22.0},
+            ]},
+            headers=auth(secret),
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["accepted"] == 3
+
+        async with get_sessionmaker()() as db:
+            rows = (await db.execute(
+                select(Reading).where(Reading.device_id == device_id)
+                .order_by(Reading.time)
+            )).scalars().all()
+
+        # Nudged apart rather than deduplicated: dropping collisions would
+        # silently discard real samples.
+        assert len(rows) == 3
+        assert len({r.time for r in rows}) == 3
+        assert [r.temp_c for r in rows] == [20.0, 21.0, 22.0]
+
+    async def test_order_is_preserved(self, client, claimed):
+        """Nudging backwards must not reverse the batch."""
+        device_id, secret, _ = claimed
+        await client.post(
+            "/v1/ingest/telemetry",
+            json={"v": 1, "device_id": device_id, "samples": [
+                {"ts": None, "temp_c": float(i)} for i in range(5)
+            ]},
+            headers=auth(secret),
+        )
+        async with get_sessionmaker()() as db:
+            rows = (await db.execute(
+                select(Reading).where(Reading.device_id == device_id)
+                .order_by(Reading.time)
+            )).scalars().all()
+        assert [r.temp_c for r in rows] == [0.0, 1.0, 2.0, 3.0, 4.0]

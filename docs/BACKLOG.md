@@ -47,6 +47,10 @@ behaviour, but the app shows a permanently empty Light tile.
 DuPont wires drop contact, and capturing a dropout as the air reference would
 write a permanently wrong value to NVS.
 
+**Sensors read as faults.** soil1 raw=0 (probe disconnected), DHT read fails —
+both correctly reported as null rather than 0.0, so `readings` rows from the
+real pot are all-null with flags=0x3C. Expected until the JST connectors land.
+
 **Events have no HTTP uplink.** MQTT had a `event` topic; HTTP ingest has
 `/telemetry`, `/ack` and `/bootstrap` and no equivalent. `gg_net_publish_event`
 logs locally and returns OK, so a local watering never reaches the care log.

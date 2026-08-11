@@ -343,8 +343,32 @@ esp_err_t gg_net_publish_event(const char *kind, const char *data_json) {
 }
 
 static void publish_task(void *arg) {
+    /* Flush when the batch is full *or* the interval elapses, whichever comes
+     * first -- which is what contracts/telemetry.md specifies and what the
+     * header claims, but the interval alone was doing. In bringup mode that
+     * mismatch was silently lossy: sampling every 2s fills a 12-sample batch
+     * in 24s, and the remaining ~4.5 minutes of readings were dropped on the
+     * floor by gg_net_queue_reading. At the production 60s cadence a full
+     * batch takes 12 minutes, so the interval still wins there. */
+    TickType_t last = xTaskGetTickCount();
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(GG_PUBLISH_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+        TickType_t now = xTaskGetTickCount();
+        TickType_t since = now - last;
+
+        // Rate limit first, so a failing send cannot spin.
+        if (since < pdMS_TO_TICKS(GG_PUBLISH_MIN_GAP_MS)) continue;
+
+        /* Read without the lock: a stale int here costs at most one extra
+         * second of latency, and taking the mutex every second to poll would
+         * contend with the sampling task for no benefit. */
+        bool full = s_batch_len >= GG_BATCH_MAX_SAMPLES;
+        bool due  = since >= pdMS_TO_TICKS(GG_PUBLISH_INTERVAL_MS);
+        if (!full && !due) continue;
+
+        // Stamped before the attempt, so a failure backs off too.
+        last = now;
         flush_batch();
     }
 }
@@ -503,7 +527,11 @@ esp_err_t gg_net_init(gg_net_pump_cb_t pump_cb) {
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
 
-    xTaskCreate(publish_task, "gg_publish", 4096, NULL, 4, NULL);
+    /* 12 KB, not the 4 KB that sufficed for MQTT. A TLS handshake plus
+     * certificate-bundle verification runs on the calling task's stack, and
+     * 4 KB overflowed on the first HTTPS POST -- the board reboot-looped,
+     * which reads as a hang rather than as a stack problem. */
+    xTaskCreate(publish_task, "gg_publish", 12288, NULL, 4, NULL);
 
     ESP_LOGI(TAG, "net init: device_id=%s claim_code=%s",
              s_device_id, s_claim_code);
