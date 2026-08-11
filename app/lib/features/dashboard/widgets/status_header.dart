@@ -113,6 +113,7 @@ DashboardSummary summarise(WidgetRef ref, List<Pot> pots) {
   int worstRank = -1;
   DateTime? newestReading;
   int assessed = 0;
+  int usable = 0;
 
   int rank(String status) => switch (status) {
         'bad' => 3,
@@ -140,12 +141,30 @@ DashboardSummary summarise(WidgetRef ref, List<Pot> pots) {
       // problem rather than a plant problem. Surfacing it as the headline
       // would tell the user their plant is unwell when the probe is unplugged.
       if (p.status == 'unknown') continue;
+      usable++;
       if (rank(p.status) > worstRank) {
         worstRank = rank(p.status);
         worstParam = p;
         worstPot = pot;
       }
     }
+  }
+
+  // Health came back but every parameter was 'unknown', so there is nothing
+  // to judge. Falling through to the "nothing bad found" branch below would
+  // print a confident green "is thriving" for a pot whose probes are
+  // unplugged — worse than saying nothing, because it looks like an answer.
+  if (assessed > 0 && usable == 0) {
+    return DashboardSummary(
+      verdict: Verdict.waiting,
+      headline: pots.length == 1
+          ? 'No readings from ${pots.first.name}'
+          : 'No sensor readings yet',
+      detail: newestReading == null
+          ? 'Check the sensors are connected'
+          : 'Pot last checked in ${freshness(newestReading)}',
+      subject: pots.length == 1 ? pots.first : null,
+    );
   }
 
   if (assessed == 0) {
@@ -202,7 +221,7 @@ class StatusHeader extends ConsumerWidget {
 
     return SliverAppBar(
       pinned: true,
-      expandedHeight: 178,
+      expandedHeight: 184,
       backgroundColor: GGColors.bg,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
@@ -232,7 +251,7 @@ class StatusHeader extends ConsumerWidget {
           final top = MediaQuery.of(context).padding.top;
           // 0 collapsed, 1 fully expanded.
           final t = ((constraints.maxHeight - top - kToolbarHeight) /
-                  (178 - kToolbarHeight))
+                  (184 - kToolbarHeight))
               .clamp(0.0, 1.0);
 
           return FlexibleSpaceBar(
@@ -272,7 +291,7 @@ class StatusHeader extends ConsumerWidget {
                     child: Opacity(
                       opacity: t,
                       child: Padding(
-                        padding: const EdgeInsets.only(top: 5),
+                        padding: EdgeInsets.only(top: 5 * t),
                         child: Text(
                           s.detail,
                           maxLines: 1,
@@ -319,7 +338,10 @@ class _Eyebrow extends StatelessWidget {
     };
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
+      // Shrinks with the header. A fixed gap here overflowed the title column
+      // by a few pixels midway through the collapse -- enough to draw
+      // overflow stripes on every scroll.
+      padding: EdgeInsets.only(bottom: 2 + 5 * t),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
