@@ -34,15 +34,6 @@ Nothing creates that row on a bench. `scripts/register_device.py` stands in.
 code. It is already on Wi-Fi; only the request is missing, and
 `/v1/ingest/telemetry` is the natural neighbour for it.
 
-### Backend still runs `GG_AUTH_MODE=dev`
-Trusts an `X-Dev-User` header. The app now produces real Firebase tokens, so
-the switch is available — it was left on dev to avoid locking the app out
-before sign-in was verified.
-
-Flip in `~/Library/LaunchAgents/com.greengenius.backend.plist`, then
-`launchctl unload && load`. `Settings._guard_production` already refuses dev
-auth under `GG_ENV=production`, so this only matters while env is development.
-
 ### Firmware never sends telemetry to the backend
 `gg_net.c` publishes over MQTT to `GG_MQTT_URI`, hardcoded to
 `mqtt://10.0.0.164:1883` — a network we are no longer on, and no broker runs
@@ -84,6 +75,11 @@ works; nothing calls it. The Identify quick action is a stub.
 
 **No OTA.** `esp_https_ota` is unconfigured despite two OTA partitions. Every
 firmware change needs USB. Should exist before hardware leaves the bench.
+
+**The backend runs on this Mac.** A launchd agent starts it at login, so it
+survives reboots, but the phone only reaches it on the home Wi-Fi. `render.yaml`
+deploys the same service publicly; it needs a Neon database and a Render
+account, both of which are the user's to create.
 
 **Free-account iOS signing expires after 7 days.** The app stops launching and
 must be reinstalled; the symptom looks like a crash.

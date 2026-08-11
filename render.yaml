@@ -13,13 +13,20 @@ services:
     plan: free
     region: oregon
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && alembic upgrade head
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r requirements.txt
+    # Migrations run at start, not at build. Build runs before dashboard-set
+    # secrets are guaranteed present, so `alembic upgrade head` there fails on
+    # the very first deploy with no database URL to connect to.
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
 
     envVars:
+      # production turns on Settings._guard_production, which refuses to boot
+      # with dev auth, SQLite, wildcard CORS, plaintext MQTT or the simulator.
+      # Misconfiguration then fails at startup rather than at the first
+      # request. It also disables /docs, so the service exposes no web page.
       - key: GG_ENV
-        value: development
+        value: production
 
       # Firebase ID tokens, verified against Google's JWKS. Never `dev` here:
       # that mode trusts an X-Dev-User header, and a public URL with it enabled
@@ -42,6 +49,12 @@ services:
 
       - key: GG_SIMULATE
         value: "0"
+
+      # Unused now that telemetry arrives over HTTPS, but the production guard
+      # rejects plaintext MQTT and this keeps that check honest rather than
+      # weakening it.
+      - key: GG_MQTT_TLS
+        value: "true"
 
       - key: PYTHON_VERSION
         value: "3.12.7"

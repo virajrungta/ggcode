@@ -36,11 +36,19 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
 
+    # Interactive docs are the only browsable page this service has, and it
+    # exists for us rather than for users. Off outside development so a public
+    # deployment presents no web surface at all.
+    docs_enabled = settings.env == "development"
+
     app = FastAPI(
         title="GreenGenius API",
         version="1.0.0",
         description="Backend for the GreenGenius AI plant pot.",
         lifespan=lifespan,
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
     )
 
     # The old backend used allow_origins=["*"] with allow_credentials=True — a
