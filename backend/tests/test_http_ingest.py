@@ -314,3 +314,131 @@ class TestCommandDownlink:
         )
         # other01 has no secret, so it cannot authenticate at all.
         assert r.status_code == 401
+
+
+class TestBootstrap:
+    """The device's own credential path.
+
+    Nothing wrote a secret to the pot before this existed: claim returned one
+    to the app, which dropped it, and the firmware's NVS key was never used.
+    The pot was on Wi-Fi and unable to authenticate at all.
+    """
+
+    async def test_valid_token_returns_a_working_secret(self, client, seeded_device):
+        r = await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": seeded_device, "token": "TEST-CODE",
+                  "fw_version": "1.1.0"},
+        )
+        assert r.status_code == 200
+        secret = r.json()["secret"]
+        assert secret
+
+        # The secret is only meaningful if it authenticates telemetry.
+        r = await client.post(
+            "/v1/ingest/telemetry",
+            json={"v": 1, "device_id": seeded_device, "samples": [{"temp_c": 21.0}]},
+            headers=auth(secret),
+        )
+        assert r.status_code == 200
+        assert r.json()["accepted"] == 1
+
+    async def test_wrong_token_rejected(self, client, seeded_device):
+        r = await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": seeded_device, "token": "NOPE-NOPE"},
+        )
+        assert r.status_code == 401
+
+    async def test_token_belonging_to_another_device_rejected(
+        self, client, seeded_device
+    ):
+        """A valid token must not authenticate a different device id."""
+        r = await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": "someoneelse", "token": "TEST-CODE"},
+        )
+        assert r.status_code == 401
+
+    async def test_does_not_create_unknown_devices(self, client, db_path):
+        """Squatting guard: bootstrap authenticates, it does not register."""
+        r = await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": "ghostdev", "token": "ANY-TOKEN"},
+        )
+        assert r.status_code == 401
+
+        async with get_sessionmaker()() as db:
+            assert await db.get(Device, "ghostdev") is None
+
+    async def test_survives_being_claimed(self, client, seeded_device):
+        """The bug this column exists for.
+
+        Claiming consumes claim_code. When the device authenticated with that
+        same value it could never re-bootstrap afterwards, so any pot whose
+        owner had claimed it was permanently locked out.
+        """
+        await client.post(
+            "/v1/devices/claim",
+            json={"claim_code": "TEST-CODE"},
+            headers={"X-Dev-User": "alice"},
+        )
+
+        r = await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": seeded_device, "token": "TEST-CODE"},
+        )
+        assert r.status_code == 200
+
+    async def test_claim_does_not_invalidate_a_bootstrapped_secret(
+        self, client, seeded_device
+    ):
+        """Order independence: the pot may bootstrap before its owner claims.
+
+        Claim used to mint unconditionally, which would 401 a pot that was
+        already reporting.
+        """
+        secret = (await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": seeded_device, "token": "TEST-CODE"},
+        )).json()["secret"]
+
+        await client.post(
+            "/v1/devices/claim",
+            json={"claim_code": "TEST-CODE"},
+            headers={"X-Dev-User": "alice"},
+        )
+
+        r = await client.post(
+            "/v1/ingest/telemetry",
+            json={"v": 1, "device_id": seeded_device, "samples": [{"temp_c": 20.0}]},
+            headers=auth(secret),
+        )
+        assert r.status_code == 200
+
+    async def test_rebootstrap_invalidates_the_old_secret(self, client, seeded_device):
+        """Self-healing has a cost: only the newest secret works."""
+        first = (await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": seeded_device, "token": "TEST-CODE"},
+        )).json()["secret"]
+        second = (await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": seeded_device, "token": "TEST-CODE"},
+        )).json()["secret"]
+
+        assert first != second
+        body = {"v": 1, "device_id": seeded_device, "samples": [{"temp_c": 20.0}]}
+        assert (await client.post("/v1/ingest/telemetry", json=body,
+                                  headers=auth(first))).status_code == 401
+        assert (await client.post("/v1/ingest/telemetry", json=body,
+                                  headers=auth(second))).status_code == 200
+
+    async def test_records_reported_firmware_version(self, client, seeded_device):
+        await client.post(
+            "/v1/ingest/bootstrap",
+            json={"device_id": seeded_device, "token": "TEST-CODE",
+                  "fw_version": "9.9.9"},
+        )
+        async with get_sessionmaker()() as db:
+            assert (await db.get(Device, seeded_device)).fw_version == "9.9.9"

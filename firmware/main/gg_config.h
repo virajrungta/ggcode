@@ -155,11 +155,20 @@
 
 // --- Cloud ---------------------------------------------------------------
 // Placeholder broker settings. Per-device credentials are issued at claim
-// time and stored in NVS; these are the bootstrap defaults for bench work.
-// Production must be mqtts:// on 8883 — Settings rejects plaintext MQTT in
-// the backend, and the firmware should not be the weak link.
-#define GG_MQTT_URI              "mqtt://10.0.0.164:1883"
-#define GG_MQTT_PASSWORD         ""
+// time and stored in NVS; this is the bootstrap default for bench work.
+//
+// HTTP, not MQTT. MQTT needs a broker plus a permanently-connected subscriber,
+// and every free hosting tier sleeps after ~15 minutes idle — a sleeping
+// subscriber loses telemetry outright. A POST wakes the service instead, so
+// idling costs latency rather than data. The previous MQTT URI pointed at a
+// broker on a network we no longer use, and the pot reported nothing for days
+// without any error to show for it.
+//
+// Bonjour rather than a raw IP: the Mac's DHCP lease changes, and a hardcoded
+// address is what caused the silent failure above. Change to the https:// URL
+// once the backend is deployed.
+#define GG_API_BASE              "http://MacBook-Air.local:8000"
+#define GG_HTTP_TIMEOUT_MS       15000    // free tiers cold-start slowly
 
 // --- NVS keys ------------------------------------------------------------
 #define GG_NVS_NAMESPACE         "gg"
@@ -168,4 +177,11 @@
 #define GG_NVS_SOIL2_AIR         "s2_air"
 #define GG_NVS_SOIL2_WATER       "s2_water"
 #define GG_NVS_CALIBRATED_AT     "cal_at"
+// Telemetry bearer secret from /v1/ingest/bootstrap. Name kept for NVS
+// compatibility with units already flashed; the transport is HTTP now.
 #define GG_NVS_MQTT_SECRET       "mqtt_sec"
+
+// The claim code must survive reboots: it is both what the user types and the
+// token the pot presents to bootstrap. Regenerating it each boot meant a pot
+// could never authenticate twice.
+#define GG_NVS_CLAIM_CODE        "claim"

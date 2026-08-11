@@ -55,8 +55,16 @@ async def claim_device(
             "Factory-reset it to transfer ownership.",
         )
 
-    secret = secrets.token_urlsafe(32)
-    device.mqtt_secret_hash = _hasher.hash(secret)
+    # Only mint if the device has not already bootstrapped its own secret.
+    # Overwriting would 401 a pot that is already reporting, and the app never
+    # uses this value — it is returned for the MQTT path, which HTTP ingest
+    # has replaced. The device obtains its credential from /v1/ingest/bootstrap.
+    if device.mqtt_secret_hash:
+        secret = ""
+    else:
+        secret = secrets.token_urlsafe(32)
+        device.mqtt_secret_hash = _hasher.hash(secret)
+
     device.claimed_by = user.id
     device.claimed_at = now
     device.claim_code = None            # single use

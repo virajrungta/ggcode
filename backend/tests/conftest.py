@@ -84,6 +84,7 @@ async def seeded_device(db_path):
             model="GG-POT-1",
             fw_version="1.0.0",
             claim_code="TEST-CODE",
+            bootstrap_token="TEST-CODE",
             claim_code_expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
         )
         db.add(device)

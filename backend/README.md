@@ -9,19 +9,19 @@ profiles, and issues watering commands.
 ## The pipeline, end to end
 
 ```
-   ESP32 pot                     broker            backend              app
-   ─────────                     ──────            ───────              ───
+   ESP32 pot                                      backend              app
+   ─────────                                      ───────              ───
 
 1. sample sensors every 60s
    soil / temp / humidity
         │
-        ├── batch 12 samples ──▶ gg/v1/{id}/telemetry
-        │                             │
+        ├── batch 12 samples ──▶ POST /v1/ingest/telemetry
+        │                             │      (Bearer: device secret)
         │                             ▼
-        │                       ingest worker
+        │                       ingest endpoint
         │                       ├─ validate + clamp
         │                       ├─ clock-skew guard
-        │                       └─ COPY ──▶ readings (hypertable)
+        │                       └─ insert ──▶ readings (hypertable)
         │                                        │
         │                                        ▼
         │                             continuous aggregates
@@ -31,11 +31,21 @@ profiles, and issues watering commands.
         │                                   FastAPI  ◀── GET /v1/pots/{id}/readings
         │                                   care engine ◀── GET .../health
         │
-        └◀── gg/v1/{id}/cmd ◀── publish ◀── POST /v1/pots/{id}/water
-             (expires_at, id)                   ▲
-                  │                             │
-                  └── ack ──▶ gg/v1/{id}/cmd/ack
+        └◀── commands in the same response ◀── POST /v1/pots/{id}/water
+             (id, op, args, expires_at)              queues a command
+                  │
+                  └── POST /v1/ingest/ack ──▶ command marked acked
 ```
+
+**Why HTTP and not MQTT.** MQTT needs a broker plus a subscriber that is
+always connected. Every free hosting tier sleeps after ~15 minutes idle, and a
+sleeping subscriber loses telemetry outright — there is nothing holding the
+subscription. A POST wakes the service instead, so idling costs latency
+(a cold start on the next reading) rather than data.
+
+The command downlink is what MQTT usually justifies, and it rides in the
+telemetry response: no second connection, no polling, no broker. Worst case a
+watering command waits one telemetry interval.
 
 Every arrow is a contract in [`../contracts/`](../contracts/).
 
@@ -47,20 +57,22 @@ Every arrow is a contract in [`../contracts/`](../contracts/).
 the pump throws outliers) and the DHT22. Each field carries a validity flag —
 a failed I²C read must never be indistinguishable from a real `0.0`.
 
-The pot batches 12 samples (or 5 minutes, whichever first) and publishes to
-`gg/v1/{device_id}/telemetry` at QoS 1.
+The pot batches 12 samples (or 5 minutes, whichever first) and POSTs them to
+`/v1/ingest/telemetry` with its device secret as a bearer token.
 
 **Why batched:** at 60s intervals unbatched, a 10k-pot fleet is 10k publishes
 per minute for no benefit.
 
 ## 2. Ingest
 
-[`app/workers/ingest.py`](app/workers/ingest.py) subscribes to
-`gg/v1/+/telemetry` and does four things before anything touches the database:
+[`app/api/v1/ingest.py`](app/api/v1/ingest.py) receives the batch and does
+four things before anything touches the database. The validation is shared
+with the MQTT worker in [`app/workers/ingest.py`](app/workers/ingest.py), which
+is retained for a future broker deployment, so the two cannot drift apart:
 
 | Guard | Why |
 |---|---|
-| **device_id match** | A payload claiming a different `device_id` than its topic is dropped. The broker ACL should prevent it; this is defence in depth. |
+| **Device auth** | The bearer secret is verified against an argon2 hash before anything is read. Unknown device and wrong secret return the same 401, so the response cannot enumerate device ids. |
 | **Clock-skew** | Samples more than 24h future or 30d past are rejected. A pot whose SNTP failed would otherwise write 1970 timestamps into the hypertable and wreck every chart and rollup built over it. |
 | **Plausibility clamp** | Out-of-range values become `null` and set a fault flag. A shorted ADC reading −3000 °C would otherwise flatten every temperature chart forever. |
 | **Batch insert** | One transaction per batch, not per sample. |
@@ -113,20 +125,29 @@ pot at 0% health, and showing either number would be a lie the user acts on.
 ## 5. Watering
 
 `POST /v1/pots/{id}/water` checks duration cap, rate limit, and current soil
-moisture, then writes a `commands` row and publishes to `gg/v1/{id}/cmd`.
+moisture, then writes a `commands` row in state `queued`. The pot collects it
+on its next telemetry POST — so the app is queuing work, not reaching the pot.
 
 **The backend's checks are a UX nicety. The firmware's are the real ones.**
 `gg_pump.c` enforces a hardware-timer runtime cap, hourly/daily quotas, a
 minimum interval, wet-soil refusal, and an empty-reservoir refusal — because
 those must hold when the backend is unreachable, wrong, or compromised.
 
-Every command carries `expires_at` and a unique `id`. With
-`clean_session=false`, a pot offline for six hours receives its entire queued
-backlog on reconnect; without expiry, "water for 5s" issued this morning fires
-tonight, and QoS 1 redelivery fires it more than once. The firmware enforces
-expiry and dedupes the last 16 ids.
+Every command carries `expires_at` and a unique `id`. A pot offline for six
+hours collects everything still queued the moment it comes back; without
+expiry, "water for 5s" issued this morning fires tonight. The firmware
+enforces expiry itself and dedupes the last 16 ids.
 
-Acks return on `gg/v1/{id}/cmd/ack` and update the `commands` row.
+**Delivery is at-most-once.** The endpoint marks a command `sent` as it hands
+it out, so a response lost in transit drops the command rather than retrying
+it. That is the right trade for a pump: at-least-once would mean a pot that
+watered and lost power before acking waters again on its next POST. A missed
+watering is recoverable and the user can tap again; a double dose into a pot
+is not.
+
+Acks go to `POST /v1/ingest/ack` and update the `commands` row. They are
+best-effort — a lost ack leaves the command `sent`, which is visible in the
+database rather than silently forgotten.
 
 ---
 
@@ -135,7 +156,7 @@ Acks return on `gg/v1/{id}/cmd/ack` and update the `commands` row.
 ```
 users          firebase_uid ─ the app authenticates with Firebase; everything
                               else lives here
-devices        one physical pot; holds the argon2 hash of its MQTT secret and
+devices        one physical pot; holds the argon2 hash of its telemetry secret and
                a single-use claim code
 pots           a user's plant. binds a device to a species
 plant_species  care_profile as JSONB — requirements are heterogeneous and the
@@ -162,16 +183,36 @@ returns **404, not 403**, for someone else's pot — a 403 confirms the id exist
 
 ## Device claiming
 
-1. Pot generates a claim code at boot, exposed over an encrypted BLE
-   characteristic
-2. App reads it during provisioning and `POST /v1/devices/claim`
-3. Backend binds device → user, mints a per-device MQTT secret, returns it
-   **once**, and stores only the argon2 hash
+Two separate secrets, because they answer different questions.
 
-Per-device secrets, never a fleet-wide password: one extracted flash image
-would otherwise compromise every pot ever shipped.
+**`claim_code`** — proves to the *backend* that a user is physically near the
+pot. The app reads it over the encrypted BLE provisioning link, or the user
+types it off the label. Single use: `POST /v1/devices/claim` consumes it and
+binds the device to the account.
 
----
+**`bootstrap_token`** — proves to the *backend* that a caller is the pot.
+Same value, different column, and never consumed. It has to be a separate
+column precisely because claiming destroys `claim_code`: a pot that
+authenticated with that value could never re-authenticate once its owner
+claimed it, which is a device permanently unable to report.
+
+```
+pot boots ──▶ POST /v1/ingest/bootstrap {device_id, token}
+                     │
+                     ├─ 401 if the token is unknown or belongs to another device
+                     └─ 200 ──▶ fresh secret, argon2-hashed server side,
+                                stored in the pot's NVS
+```
+
+Bootstrap mints a new secret every call. That is deliberate: it makes the pot
+self-healing. If its stored secret is ever invalidated it gets a 401, drops the
+secret and bootstraps again, instead of going silent until someone reflashes
+it. The cost is that only the newest secret works.
+
+Bootstrap does **not** create the `devices` row. An endpoint that minted
+devices on demand would let anyone register an unused device id and squat it
+before the real pot booted. Registration is a provisioning step; on a bench,
+[`scripts/register_device.py`](scripts/register_device.py) stands in.
 
 ## Running it
 

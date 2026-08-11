@@ -17,24 +17,27 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "mqtt_client.h"
+#include "gg_http.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 #include "wifi_provisioning/manager.h"
 #include "wifi_provisioning/scheme_ble.h"
 
 static const char *TAG = "gg_net";
 
-#define TOPIC_PREFIX "gg/v1"
 #define MAX_RECONNECT_BACKOFF_MS 60000
 #define SEEN_CMD_RING 16
 
 static gg_net_state_t    s_state = GG_NET_IDLE;
 static gg_net_pump_cb_t  s_pump_cb = NULL;
-static esp_mqtt_client_handle_t s_mqtt = NULL;
 static char              s_device_id[13] = {0};
 static char              s_claim_code[12] = {0};
 static bool              s_time_synced = false;
-static bool              s_mqtt_up = false;
+static bool              s_cloud_ok = false;
+
+/* Issued by /v1/ingest/bootstrap and persisted, so a reboot does not need a
+ * round trip before the pot can report. */
+static char              s_secret[80] = {0};
 
 // Batched telemetry, flushed on count or interval (contracts/telemetry.md).
 static gg_reading_t      s_batch[GG_BATCH_MAX_SAMPLES];
@@ -43,16 +46,13 @@ static time_t            s_batch_ts[GG_BATCH_MAX_SAMPLES];
 static int               s_batch_len = 0;
 static SemaphoreHandle_t s_batch_lock = NULL;
 
-/* QoS 1 is at-least-once, so redelivery is normal rather than exceptional.
- * Without dedup a retried "water 5s" runs twice. */
+/* HTTP ingest marks commands sent as it hands them out, so redelivery should
+ * not happen — but a response lost after the server committed would look
+ * exactly like a new command. Without dedup that reruns "water 5s". */
 static char s_seen_cmds[SEEN_CMD_RING][24];
 static int  s_seen_idx = 0;
 
 // --- helpers -------------------------------------------------------------
-
-static void topic_for(char *out, size_t n, const char *leaf) {
-    snprintf(out, n, TOPIC_PREFIX "/%s/%s", s_device_id, leaf);
-}
 
 static bool cmd_already_seen(const char *id) {
     for (int i = 0; i < SEEN_CMD_RING; i++) {
@@ -67,7 +67,7 @@ static bool cmd_already_seen(const char *id) {
 uint8_t gg_net_status_flags(void) {
     uint8_t f = 0;
     if (s_state >= GG_NET_CONNECTED) f |= GG_FLAG_WIFI_CONNECTED;
-    if (s_mqtt_up)                   f |= GG_FLAG_MQTT_CONNECTED;
+    if (s_cloud_ok)                  f |= GG_FLAG_MQTT_CONNECTED;
     return f;
 }
 
@@ -85,68 +85,109 @@ static void generate_claim_code(void) {
     s_claim_code[9] = '\0';
 }
 
-// --- MQTT ----------------------------------------------------------------
-
-static void publish_status(bool online) {
-    if (!s_mqtt) return;
-    char topic[64], payload[160];
-    topic_for(topic, sizeof(topic), "status");
-
-    wifi_ap_record_t ap;
-    int rssi = (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) ? ap.rssi : 0;
-
-    snprintf(payload, sizeof(payload),
-             "{\"online\":%s,\"fw\":\"%s\",\"rssi\":%d,\"ts\":%lld}",
-             online ? "true" : "false", GG_FW_VERSION, rssi,
-             s_time_synced ? (long long)time(NULL) : 0LL);
-
-    // Retained: the backend learns liveness on subscribe rather than waiting
-    // for the next telemetry window.
-    esp_mqtt_client_publish(s_mqtt, topic, payload, 0, 1, 1);
-}
-
-static void publish_ack(const char *id, const char *result, const char *error) {
-    char topic[64], payload[192];
-    topic_for(topic, sizeof(topic), "cmd/ack");
-    snprintf(payload, sizeof(payload),
-             "{\"id\":\"%s\",\"result\":\"%s\",\"ts\":%lld,\"error\":%s%s%s}",
-             id, result, s_time_synced ? (long long)time(NULL) : 0LL,
-             error ? "\"" : "", error ? error : "null", error ? "\"" : "");
-    esp_mqtt_client_publish(s_mqtt, topic, payload, 0, 1, 0);
-}
-
-static void handle_command(const char *data, int len) {
-    cJSON *root = cJSON_ParseWithLength(data, len);
-    if (!root) {
-        ESP_LOGW(TAG, "unparseable command payload");
+/* The code must survive a reboot. Regenerating it every boot was circular in
+ * practice: reading the code required resetting the board over serial, and
+ * the reset changed it — one reset invalidated a code mid-pairing. It is also
+ * the token the pot presents to /v1/ingest/bootstrap, so a code that changes
+ * is a device that can never authenticate twice. */
+static void load_or_create_claim_code(void) {
+    nvs_handle_t h;
+    if (nvs_open(GG_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) {
+        ESP_LOGW(TAG, "NVS unavailable; claim code will not persist");
+        generate_claim_code();
         return;
     }
 
+    size_t len = sizeof(s_claim_code);
+    if (nvs_get_str(h, GG_NVS_CLAIM_CODE, s_claim_code, &len) == ESP_OK
+            && s_claim_code[0]) {
+        nvs_close(h);
+        return;
+    }
+
+    generate_claim_code();
+    if (nvs_set_str(h, GG_NVS_CLAIM_CODE, s_claim_code) == ESP_OK) {
+        nvs_commit(h);
+        ESP_LOGI(TAG, "generated and stored a new claim code");
+    }
+    nvs_close(h);
+}
+
+static void load_secret(void) {
+    nvs_handle_t h;
+    if (nvs_open(GG_NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return;
+    size_t len = sizeof(s_secret);
+    if (nvs_get_str(h, GG_NVS_MQTT_SECRET, s_secret, &len) != ESP_OK) {
+        s_secret[0] = '\0';
+    }
+    nvs_close(h);
+}
+
+static void store_secret(void) {
+    nvs_handle_t h;
+    if (nvs_open(GG_NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_str(h, GG_NVS_MQTT_SECRET, s_secret);
+    nvs_commit(h);
+    nvs_close(h);
+}
+
+/* Exchanges the claim code for a telemetry secret. Called on first boot and
+ * again whenever the backend rejects the stored one, which is what keeps a
+ * pot recoverable without a reflash after the secret is rotated. */
+static bool ensure_secret(void) {
+    if (s_secret[0]) return true;
+
+    esp_err_t err = gg_http_bootstrap(s_device_id, s_claim_code,
+                                      GG_FW_VERSION, s_secret, sizeof(s_secret));
+    if (err != ESP_OK) {
+        s_secret[0] = '\0';
+        /* The usual cause is that no `devices` row exists for this pot yet:
+         * bootstrap authenticates, it deliberately does not register. Say so,
+         * because the symptom is otherwise a pot that silently never reports.
+         * See backend/scripts/register_device.py. */
+        ESP_LOGW(TAG, "bootstrap failed (%s) - is device %s registered with "
+                      "claim code %s?", esp_err_to_name(err),
+                 s_device_id, s_claim_code);
+        return false;
+    }
+
+    store_secret();
+    ESP_LOGI(TAG, "bootstrapped telemetry credentials");
+    return true;
+}
+
+// --- cloud transport (HTTP) ----------------------------------------------
+
+static void ack_command(const char *id, const char *result, const char *error) {
+    esp_err_t err = gg_http_ack(s_device_id, s_secret, id, result, error);
+    if (err != ESP_OK) {
+        /* Best-effort by design. A lost ack leaves the command marked `sent`
+         * server-side, which is visible in the database rather than silently
+         * forgotten. Retrying here would risk running the pump twice. */
+        ESP_LOGW(TAG, "ack for %s not delivered: %s", id, esp_err_to_name(err));
+    }
+}
+
+static void handle_command(const cJSON *root) {
     const cJSON *jid  = cJSON_GetObjectItem(root, "id");
     const cJSON *jop  = cJSON_GetObjectItem(root, "op");
     const cJSON *jexp = cJSON_GetObjectItem(root, "expires_at");
 
-    if (!cJSON_IsString(jid) || !cJSON_IsString(jop)) {
-        cJSON_Delete(root);
-        return;
-    }
+    if (!cJSON_IsString(jid) || !cJSON_IsString(jop)) return;
     const char *id = jid->valuestring;
 
     if (cmd_already_seen(id)) {
         ESP_LOGI(TAG, "duplicate command %s ignored", id);
-        cJSON_Delete(root);
         return;
     }
 
-    /* Expiry is enforced here, not merely advisory. clean_session=false means
-     * a pot that was offline receives its whole queued backlog on reconnect;
-     * without this check a "water 5s" issued this morning fires tonight, and
-     * every retry alongside it. */
+    /* Expiry is enforced here, not merely advisory. A pot that was offline
+     * comes back to whatever is still queued; without this check a "water 5s"
+     * issued this morning fires tonight. */
     if (cJSON_IsNumber(jexp) && s_time_synced) {
         if ((time_t)jexp->valuedouble < time(NULL)) {
             ESP_LOGW(TAG, "command %s expired - refusing", id);
-            publish_ack(id, "expired", NULL);
-            cJSON_Delete(root);
+            ack_command(id, "expired", NULL);
             return;
         }
     }
@@ -159,82 +200,40 @@ static void handle_command(const char *data, int len) {
         // The firmware interlocks decide, not the cloud.
         const char *res = s_pump_cb ? s_pump_cb(ms) : "not_ready";
         bool ok = (strcmp(res, "ok") == 0);
-        publish_ack(id, ok ? "ok" : "rejected", ok ? NULL : res);
+        ack_command(id, ok ? "ok" : "rejected", ok ? NULL : res);
         ESP_LOGI(TAG, "cloud pump command %s -> %s", id, res);
     } else {
-        publish_ack(id, "rejected", "unsupported_op");
+        ack_command(id, "rejected", "unsupported_op");
+    }
+}
+
+/* Commands ride back in the telemetry response rather than arriving on their
+ * own connection. That is the whole reason this transport works on hosting
+ * that sleeps: there is nothing to stay subscribed to. */
+static void handle_response(const char *body) {
+    cJSON *root = cJSON_Parse(body);
+    if (!root) return;
+
+    const cJSON *cmds = cJSON_GetObjectItem(root, "commands");
+    if (cJSON_IsArray(cmds)) {
+        const cJSON *cmd = NULL;
+        cJSON_ArrayForEach(cmd, cmds) {
+            handle_command(cmd);
+        }
+    }
+
+    /* The server's clock, used when SNTP is unreachable. Without it
+     * expires_at above cannot be evaluated and every command is applied
+     * regardless of age. */
+    const cJSON *st = cJSON_GetObjectItem(root, "server_time");
+    if (!s_time_synced && cJSON_IsNumber(st) && st->valuedouble > 1.7e9) {
+        struct timeval tv = { .tv_sec = (time_t)st->valuedouble };
+        settimeofday(&tv, NULL);
+        s_time_synced = true;
+        ESP_LOGI(TAG, "clock set from server_time");
     }
 
     cJSON_Delete(root);
-}
-
-static void mqtt_event_handler(void *arg, esp_event_base_t base,
-                               int32_t event_id, void *event_data) {
-    esp_mqtt_event_handle_t e = event_data;
-    char topic[64];
-
-    switch ((esp_mqtt_event_id_t)event_id) {
-    case MQTT_EVENT_CONNECTED:
-        s_mqtt_up = true;
-        s_state = GG_NET_CLOUD_OK;
-        ESP_LOGI(TAG, "MQTT connected");
-        topic_for(topic, sizeof(topic), "cmd");
-        esp_mqtt_client_subscribe(s_mqtt, topic, 1);
-        publish_status(true);
-        break;
-
-    case MQTT_EVENT_DISCONNECTED:
-        s_mqtt_up = false;
-        if (s_state == GG_NET_CLOUD_OK) s_state = GG_NET_CONNECTED;
-        ESP_LOGW(TAG, "MQTT disconnected");
-        break;
-
-    case MQTT_EVENT_DATA:
-        if (e->topic_len && strstr(e->topic, "/cmd")) {
-            handle_command(e->data, e->data_len);
-        }
-        break;
-
-    case MQTT_EVENT_ERROR:
-        ESP_LOGW(TAG, "MQTT error");
-        break;
-
-    default:
-        break;
-    }
-}
-
-static void mqtt_start(void) {
-    if (s_mqtt) return;
-
-    char lwt_topic[64];
-    topic_for(lwt_topic, sizeof(lwt_topic), "status");
-
-    esp_mqtt_client_config_t cfg = {
-        .broker.address.uri = GG_MQTT_URI,
-        .credentials.username = s_device_id,
-        .credentials.client_id = s_device_id,
-        .credentials.authentication.password = GG_MQTT_PASSWORD,
-        .session.last_will = {
-            .topic = lwt_topic,
-            .msg = "{\"online\":false,\"ts\":null}",
-            .qos = 1,
-            .retain = 1,
-        },
-        .session.keepalive = 60,
-        // clean_session=false so QoS-1 downlinks survive a brief dropout.
-        // Command expiry above is what keeps that from replaying stale work.
-        .session.disable_clean_session = true,
-        .network.reconnect_timeout_ms = 5000,
-    };
-
-    s_mqtt = esp_mqtt_client_init(&cfg);
-    if (!s_mqtt) {
-        ESP_LOGE(TAG, "failed to init MQTT client");
-        return;
-    }
-    esp_mqtt_client_register_event(s_mqtt, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(s_mqtt);
 }
 
 // --- telemetry batching --------------------------------------------------
@@ -263,7 +262,8 @@ static void add_num_or_null(cJSON *o, const char *key, float v, bool valid) {
 }
 
 static void flush_batch(void) {
-    if (!s_mqtt_up || s_batch_len == 0) return;
+    if (s_state < GG_NET_CONNECTED || s_batch_len == 0) return;
+    if (!ensure_secret()) return;
     if (xSemaphoreTake(s_batch_lock, pdMS_TO_TICKS(500)) != pdTRUE) return;
 
     cJSON *root = cJSON_CreateObject();
@@ -295,22 +295,50 @@ static void flush_batch(void) {
     cJSON_Delete(root);
     if (!payload) return;
 
-    char topic[64];
-    topic_for(topic, sizeof(topic), "telemetry");
-    esp_mqtt_client_publish(s_mqtt, topic, payload, 0, 1, 0);
-    ESP_LOGI(TAG, "published %d samples (%d bytes)", count, (int)strlen(payload));
+    /* Sized for the command downlink, not the batch: the response is an
+     * accepted/rejected count plus at most 8 pending commands. */
+    static char resp[1024];
+    esp_err_t err = gg_http_post_telemetry(s_device_id, s_secret, payload,
+                                           resp, sizeof(resp));
+
+    if (err == GG_ERR_HTTP_UNAUTHORIZED) {
+        /* The stored secret is stale — most often because the pot was
+         * re-registered. Drop it and bootstrap once more; the samples are
+         * already gone from the batch, so this costs one window rather than
+         * leaving the pot mute until someone reflashes it. */
+        ESP_LOGW(TAG, "secret rejected, re-bootstrapping");
+        s_secret[0] = '\0';
+        store_secret();
+        s_cloud_ok = false;
+        if (s_state == GG_NET_CLOUD_OK) s_state = GG_NET_CONNECTED;
+        free(payload);
+        return;
+    }
+
+    if (err != ESP_OK) {
+        s_cloud_ok = false;
+        if (s_state == GG_NET_CLOUD_OK) s_state = GG_NET_CONNECTED;
+        ESP_LOGW(TAG, "telemetry POST failed: %s", esp_err_to_name(err));
+        free(payload);
+        return;
+    }
+
+    s_cloud_ok = true;
+    s_state = GG_NET_CLOUD_OK;
+    ESP_LOGI(TAG, "posted %d samples (%d bytes)", count, (int)strlen(payload));
     free(payload);
+
+    handle_response(resp);
 }
 
 esp_err_t gg_net_publish_event(const char *kind, const char *data_json) {
-    if (!s_mqtt_up) return ESP_ERR_INVALID_STATE;
-    char topic[64], payload[256];
-    topic_for(topic, sizeof(topic), "event");
-    snprintf(payload, sizeof(payload),
-             "{\"v\":1,\"ts\":%lld,\"kind\":\"%s\",\"data\":%s}",
-             s_time_synced ? (long long)time(NULL) : 0LL, kind,
-             data_json ? data_json : "{}");
-    esp_mqtt_client_publish(s_mqtt, topic, payload, 0, 1, 0);
+    /* Events had an MQTT topic; HTTP ingest has no equivalent endpoint yet,
+     * so a local watering is logged but not reported. Kept as a call site
+     * rather than deleted: the pump path already produces the event, and
+     * dropping it here would hide that the uplink is what is missing.
+     * Tracked in docs/BACKLOG.md. */
+    ESP_LOGI(TAG, "event %s %s (not uplinked: no HTTP event endpoint)",
+             kind, data_json ? data_json : "{}");
     return ESP_OK;
 }
 
@@ -343,7 +371,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         s_state = GG_NET_CONNECTING;
-        s_mqtt_up = false;
+        s_cloud_ok = false;
         /* Exponential backoff, capped. Reconnecting in a tight loop on a dead
          * AP burns power and floods the airwaves; a pot may be out of range
          * for hours. */
@@ -359,7 +387,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         ip_event_got_ip_t *e = data;
         ESP_LOGI(TAG, "got ip " IPSTR, IP2STR(&e->ip_info.ip));
         start_sntp();
-        mqtt_start();
     }
 }
 
@@ -458,7 +485,8 @@ esp_err_t gg_net_init(gg_net_pump_cb_t pump_cb) {
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(s_device_id, sizeof(s_device_id), "%02x%02x%02x%02x%02x%02x",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    generate_claim_code();
+    load_or_create_claim_code();
+    load_secret();
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

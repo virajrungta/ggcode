@@ -3,8 +3,10 @@ idf_component_register(
          "gg_sensors.c"
          "gg_pump.c"
          "gg_net.c"
+         "gg_http.c"
     INCLUDE_DIRS "."
-    REQUIRES nvs_flash esp_wifi esp_netif esp_event mqtt json wifi_provisioning
+    REQUIRES nvs_flash esp_wifi esp_netif esp_event json wifi_provisioning
+             esp_http_client esp-tls mbedtls
              esp_adc
              esp_driver_i2c
              esp_driver_gpio

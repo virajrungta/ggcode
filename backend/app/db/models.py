@@ -54,9 +54,19 @@ class Device(Base):
     model: Mapped[str] = mapped_column(String(32), default="GG-POT-1")
     fw_version: Mapped[str | None] = mapped_column(String(32))
 
-    # Argon2 hash of the per-device MQTT secret. The plaintext is returned
-    # exactly once, at claim time, and never stored.
+    # Argon2 hash of the per-device secret used to authenticate telemetry.
+    # The plaintext is returned exactly once, to the device at bootstrap, and
+    # never stored.
     mqtt_secret_hash: Mapped[str | None] = mapped_column(String(255))
+
+    # Device-facing twin of claim_code. Claiming consumes claim_code, so a
+    # device that authenticated with it could never re-authenticate after its
+    # owner claimed it. This column is never consumed, which lets a pot
+    # bootstrap before or after claim, and again after a factory reset.
+    #
+    # It is not a lesser credential than claim_code: both are the same secret
+    # printed on the pot, and holding it already allows claiming the device.
+    bootstrap_token: Mapped[str | None] = mapped_column(String(32), index=True)
 
     claim_code: Mapped[str | None] = mapped_column(String(32), index=True)
     claim_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

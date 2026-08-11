@@ -9,38 +9,16 @@ Hardware findings live in [GGPCB4_NOTES.md](GGPCB4_NOTES.md); deployment in
 
 ## Blocking
 
-### The claim code regenerates on every boot
-`firmware/main/gg_net.c` → `generate_claim_code()` runs at each startup and
-stores nothing.
-
-Circular in practice: reading the code requires resetting the board over
-serial, and the reset regenerates it. Cost us several failed pairing attempts,
-including one where a reset invalidated a code mid-flow.
-
-**Fix:** generate once, persist to NVS, reuse. Then it can be printed on the
-pot — which the pairing screen already tells users to look for.
-
-Related: the BLE pairing passkey is a *second* secret, also serial-only.
-Consider collapsing to one number used for both.
-
 ### The pot cannot register itself
-`/v1/devices/claim` looks up an existing `devices` row and deliberately does
-not create one — an endpoint that mints devices on demand would let anyone
-register any device id and claim it.
+`/v1/ingest/bootstrap` now issues a pot its telemetry secret, but deliberately
+does not create the `devices` row — an endpoint that minted devices on demand
+would let anyone squat an unused device id before the real pot ever booted.
 
-Nothing creates that row on a bench. `scripts/register_device.py` stands in.
+Nothing creates that row on a bench. `scripts/register_device.py` stands in,
+and the pot logs a pointer to it when bootstrap fails.
 
-**Fix:** the pot self-registers on first boot, POSTing its device id and claim
-code. It is already on Wi-Fi; only the request is missing, and
-`/v1/ingest/telemetry` is the natural neighbour for it.
-
-### Firmware never sends telemetry to the backend
-`gg_net.c` publishes over MQTT to `GG_MQTT_URI`, hardcoded to
-`mqtt://10.0.0.164:1883` — a network we are no longer on, and no broker runs
-there.
-
-The pot has been on Wi-Fi and reporting nothing. `/v1/ingest/telemetry` exists
-and is tested; the firmware needs an HTTP path to it.
+**Fix:** a provisioning step that writes device ids and bootstrap tokens when
+boards are flashed. Not an open endpoint.
 
 ---
 
@@ -48,8 +26,7 @@ and is tested; the firmware needs an HTTP path to it.
 
 | Where | Value | Should be |
 |---|---|---|
-| `gg_config.h` | `GG_MQTT_URI = mqtt://10.0.0.164:1883` | configured at provisioning, or the HTTP endpoint |
-| `gg_config.h` | `GG_MQTT_PASSWORD = ""` | per-device secret from claim, stored in NVS |
+| `gg_config.h` | `GG_API_BASE = http://MacBook-Air.local:8000` | configured at provisioning; the deployed https:// URL |
 | `gg_config.h` | `GG_WLVL_EMPTY_RAW = 600` | measured, once a compatible sensor exists |
 | `gg_config.h` | `GG_BRINGUP_MODE = 1` (2s sampling) | 0 before shipping; production is 60s |
 | `core/providers.dart` | `GG_DEV_USER` default `dev-user` | removed once Firebase auth is enforced |
@@ -69,6 +46,15 @@ behaviour, but the app shows a permanently empty Light tile.
 **Soil calibration never completed** — blocked on JST XH connectors. Loose
 DuPont wires drop contact, and capturing a dropout as the air reference would
 write a permanently wrong value to NVS.
+
+**Events have no HTTP uplink.** MQTT had a `event` topic; HTTP ingest has
+`/telemetry`, `/ack` and `/bootstrap` and no equivalent. `gg_net_publish_event`
+logs locally and returns OK, so a local watering never reaches the care log.
+
+**Offline detection is server-side only.** MQTT's last-will marked a pot
+offline the moment the broker noticed. With HTTP the backend sets `online` on
+each POST and nothing clears it, so a dead pot reads as online forever. Needs a
+`last_seen_at` staleness sweep.
 
 **Plant.id is wired but unreachable from the UI.** `/v1/pots/{id}/identify`
 works; nothing calls it. The Identify quick action is a stub.

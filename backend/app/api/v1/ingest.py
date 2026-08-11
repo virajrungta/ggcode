@@ -15,6 +15,7 @@ plausibility clamp — so the two transports cannot drift apart.
 from __future__ import annotations
 
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -194,6 +195,60 @@ async def ingest_telemetry(
         # The device uses this to correct its clock when SNTP is unavailable,
         # which keeps expires_at meaningful without an NTP round trip.
         server_time=int(arrival.timestamp()),
+    )
+
+
+class BootstrapIn(BaseModel):
+    device_id: str
+    token: str
+    fw_version: str | None = None
+
+
+class BootstrapOut(BaseModel):
+    secret: str
+    server_time: int
+
+
+@router.post("/bootstrap", response_model=BootstrapOut)
+async def bootstrap_device(
+    body: BootstrapIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """Issue the device its telemetry secret, proved by the token on the pot.
+
+    Deliberately does not create the `devices` row. An endpoint that minted
+    devices on demand would let anyone register an unused device id and squat
+    it before the real pot ever booted. Registration stays a provisioning
+    step; see scripts/register_device.py.
+
+    Minting a fresh secret on every call is what makes the device
+    self-healing: if its stored secret is ever invalidated it gets a 401,
+    drops the secret and calls this again, rather than going silent until
+    someone reflashes it.
+    """
+    result = await db.execute(
+        select(Device).where(Device.bootstrap_token == body.token)
+    )
+    device = result.scalar_one_or_none()
+
+    # Token must match *and* belong to the device claiming it, or a pot could
+    # authenticate as its neighbour. Same error for both failures so the
+    # response cannot be used to enumerate device ids.
+    if device is None or device.id != body.device_id:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Invalid device credentials"
+        )
+
+    secret = secrets.token_urlsafe(32)
+    device.mqtt_secret_hash = _hasher.hash(secret)
+    if body.fw_version:
+        device.fw_version = body.fw_version
+    device.last_seen_at = datetime.now(timezone.utc)
+
+    log.info("device %s bootstrapped a new secret", device.id)
+    return BootstrapOut(
+        secret=secret,
+        server_time=int(datetime.now(timezone.utc).timestamp()),
     )
 
 
