@@ -34,6 +34,40 @@ boards are flashed. Not an open endpoint.
 
 ---
 
+## Dashboard header — needs rework (2026-08-11)
+
+Shipped without ever rendering it. Screenshot on device shows:
+
+**Type is ~1.5x the intended size.** `FlexibleSpaceBar` applies
+`expandedTitleScale`, default **1.5**, on top of whatever the title's own
+style says. The header animates its own font size from 17 to 26, so the
+expanded headline actually draws at ~39px and wraps "Add your first plant"
+onto two lines that dominate the screen. Fix: `expandedTitleScale: 1.0`,
+since the size is already being interpolated by hand.
+
+**The empty state is said three times.** Header headline "Add your first
+plant", header detail "Pair a GreenGenius pot to start tra…" (truncated), and
+then the body's own empty state repeats both. With no pots the header should
+be quiet, or absent.
+
+**The eyebrow lands in the status bar.** "GET STARTED" and its dot render at
+the top-left against the system clock, and collide with the add/profile
+buttons. The eyebrow is inside the `FlexibleSpaceBar` title column, which is
+bottom-anchored and scaled — it needs to be positioned independently.
+
+**Detail line truncates at the expanded size** rather than wrapping.
+
+Root cause of all of it: `FlexibleSpaceBar` was the wrong primitive for a
+three-line composed header. A `SliverPersistentHeader` with an explicit
+delegate gives direct control of the collapse instead of fighting a widget
+that scales and repositions its own title.
+
+Process note: the widget tests caught a 3px overflow and a wrong verdict, but
+every problem above is one a test cannot see and a screenshot shows in a
+second. Render UI before shipping it.
+
+---
+
 ## Known gaps
 
 **Water level sensor is incompatible.** DFRobot SEN0204 is 5–24V digital; J4
