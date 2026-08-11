@@ -144,3 +144,52 @@ Steps 2 and 3 are the real work; the rest is configuration.
 - **Render sleeps on idle, not on a schedule.** A pot posting every 60s keeps
   it awake continuously, which may consume the 750 hrs/mo faster than
   expected. If it runs out, lengthen the interval or move to Oracle Cloud.
+
+
+---
+
+## Neon: what the free tier actually gives you
+
+Verified against the live database on 2026-08-11, not from documentation.
+
+**Postgres 18.4.** `date_bin` works, which is what the chart endpoint uses.
+
+**TimescaleDB is present but Apache-licensed.** This is the surprise.
+`pg_available_extensions` lists `timescaledb`, and `CREATE EXTENSION` succeeds,
+so a naive "is Timescale available?" check says yes. But compression,
+continuous aggregates and retention policies are all Community-licensed and
+fail with:
+
+> functionality not supported under the current "apache" license
+
+The first migration attempt died partway through on exactly that. `SHOW
+timescaledb.license` is not even a valid GUC on this build, so the edition
+cannot be probed up front — `0002_timescale` now attempts each Community
+feature inside a SAVEPOINT and skips it if the licence rejects it. Only
+licence errors are swallowed; anything else still fails the migration.
+
+What survives: **hypertables and `time_bucket`**. What does not:
+`readings_1h` / `readings_1d`, compression, retention.
+
+Consequences:
+
+- Charts read the **raw** `readings` table. That is fine at one pot; it is not
+  fine at scale, and the aggregates should come back if this ever moves to a
+  Timescale-licensed host.
+- Nothing deletes old rows, since retention is a Community feature. Neon's
+  free tier caps at 0.5 GB. One pot at 60s sampling is ~500 KB/year, so this
+  is not urgent, but it is unbounded.
+- The chart endpoint must never reference `readings_1h` by name. It uses
+  `date_bin` on the raw table for exactly this reason.
+
+**Auto-suspend after 5 minutes idle.** Combined with Render's 15-minute
+spin-down, a first request after a quiet period pays both cold starts.
+
+## Migrating SQLite → Postgres
+
+`scripts/migrate_to_postgres.py`. One trap, found the hard way: SQLite has no
+timezone type, so datetimes the backend wrote as `datetime.now(timezone.utc)`
+come back **naive**. asyncpg interprets a naive datetime for a `timestamptz`
+column in the server's local zone and converts it — every row silently landed
+7 hours late, and every chart would have moved with it. The script now stamps
+UTC onto naive values before insert.

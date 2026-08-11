@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -37,6 +38,20 @@ from app.db.models import (  # noqa: E402
 # Readings reference devices. Getting this wrong surfaces as a foreign-key
 # violation halfway through, with a partially populated database.
 ORDER = [User, Device, PlantSpecies, Pot, Reading, Command, CareEvent, Alert]
+
+
+def as_utc(value):
+    """Attach UTC to naive datetimes coming out of SQLite.
+
+    SQLite has no timezone type, so every datetime the backend wrote as
+    `datetime.now(timezone.utc)` comes back naive. Handing that to asyncpg for
+    a `timestamptz` column makes it interpret the value in the *server's local
+    zone* and convert — which silently shifted every row by the UTC offset
+    (7 hours on this machine) and would have moved every chart with it.
+    """
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def primary_key(model, row):
@@ -82,7 +97,8 @@ async def main(target_url: str) -> int:
                 # Detach from the source session before attaching to the
                 # target; a row still bound to another session cannot be added.
                 data = {
-                    c.name: getattr(row, c.name) for c in model.__table__.columns
+                    c.name: as_utc(getattr(row, c.name))
+                    for c in model.__table__.columns
                 }
                 dst.add(model(**data))
                 copied += 1
@@ -102,9 +118,9 @@ async def main(target_url: str) -> int:
 
     print(f"\ncopied {total_copied} rows")
     print(f"target now holds {pots} pots and {readings} readings")
-    print("\nThe per-device MQTT secret is a hash and cannot be re-derived, so")
-    print("any paired pot keeps working for the app but must be re-claimed")
-    print("before it can post telemetry with a new secret.")
+    print("\nDevice secrets are stored as hashes and cannot be re-derived, but")
+    print("a pot re-bootstraps automatically on its first 401, so no pairing")
+    print("is lost as long as devices.bootstrap_token came across.")
     return 0
 
 
