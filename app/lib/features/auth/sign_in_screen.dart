@@ -88,8 +88,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const GGIconTile(
-                          icon: Icons.eco_rounded, size: 68, iconSize: 32),
+                      // Centred, not stretched: the parent Column is
+                      // CrossAxisAlignment.stretch so the form fields fill the
+                      // width, and that was pulling the 68px icon tile into a
+                      // full-width green bar.
+                      const Center(
+                        child: GGIconTile(
+                            icon: Icons.eco_rounded, size: 68, iconSize: 32),
+                      ),
                       const SizedBox(height: GGSpacing.l),
                       const Text(
                         'GreenGenius',
