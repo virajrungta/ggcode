@@ -13,6 +13,9 @@ services:
     plan: free
     region: oregon
     rootDir: backend
+    # Explicit, because a blueprint otherwise deploys the repo's default
+    # branch — which is not where any of this work lives.
+    branch: feat/monorepo-v1
     buildCommand: pip install -r requirements.txt
     # Migrations run at start, not at build. Build runs before dashboard-set
     # secrets are guaranteed present, so `alembic upgrade head` there fails on
