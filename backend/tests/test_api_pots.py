@@ -293,3 +293,53 @@ class TestReadings:
         assert r.status_code == 200
         assert r.json()["status"] == "bad"
         assert any("Soil" in i for i in r.json()["issues"])
+
+
+class TestBucketingDialect:
+    """The chart query must not depend on TimescaleDB.
+
+    `time_bucket` is a TimescaleDB function, but the branch that used it was
+    selected on `dialect == "postgresql"` alone. The managed Postgres this
+    deploys to (Neon) has no TimescaleDB — the hypertable migration detects
+    that and skips — so every chart query called a function that was not
+    there. Compile-level, because CI has no Postgres to execute against.
+    """
+
+    def _compiled(self, dialect) -> str:
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import Integer, cast, func, select
+
+        from app.db.models import Reading
+
+        width = timedelta(hours=1)
+        seconds = int(width.total_seconds())
+
+        if dialect.name == "postgresql":
+            bucket = func.date_bin(
+                width, Reading.time, datetime(1970, 1, 1, tzinfo=timezone.utc)
+            ).label("bucket")
+        else:
+            epoch = cast(func.strftime("%s", Reading.time), Integer)
+            bucket = (cast(epoch / seconds, Integer) * seconds).label("bucket")
+
+        stmt = select(bucket).group_by(bucket)
+        return str(stmt.compile(dialect=dialect))
+
+    def test_postgres_uses_core_date_bin_not_timescale(self):
+        from sqlalchemy.dialects import postgresql
+
+        sql = self._compiled(postgresql.dialect())
+        assert "date_bin" in sql
+        assert "time_bucket" not in sql, (
+            "time_bucket requires TimescaleDB, which Neon does not provide"
+        )
+
+    def test_sqlite_still_floors_the_quotient(self):
+        """Without the cast, SQLite's float division makes every row its own
+        bucket — 120 points came back where 3 were expected."""
+        from sqlalchemy.dialects import sqlite
+
+        sql = self._compiled(sqlite.dialect())
+        assert "CAST" in sql.upper()
+        assert "date_bin" not in sql

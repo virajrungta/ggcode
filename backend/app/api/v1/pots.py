@@ -149,7 +149,15 @@ async def get_readings(
     dialect = db.bind.dialect.name if db.bind else "sqlite"
 
     if dialect == "postgresql":
-        bucket_expr = func.time_bucket(width, Reading.time).label("bucket")
+        # date_bin, not TimescaleDB's time_bucket. They do the same job, but
+        # time_bucket only exists where the extension is installed, and the
+        # managed Postgres this deploys to (Neon) does not offer it -- the
+        # hypertable migration detects that and skips. Selecting on dialect
+        # alone meant every chart query called a function that was not there.
+        # date_bin is core Postgres 14+, so it works with or without Timescale.
+        bucket_expr = func.date_bin(
+            width, Reading.time, datetime(1970, 1, 1, tzinfo=timezone.utc)
+        ).label("bucket")
     else:
         # SQLite: floor(epoch / width) * width. Two casts are needed --
         # `strftime('%s')` yields a string, and SQLite's `/` returns a float,
