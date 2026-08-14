@@ -94,6 +94,30 @@ String freshness(DateTime? at) {
   return '${d.inDays} days ago';
 }
 
+/// A headline-length phrase for a failing parameter.
+///
+/// The care engine's own message is a full sentence written as body copy
+/// ("Soil is very dry at 12% — water thoroughly today to avoid root damage").
+/// Setting that as a 26px display headline truncated it mid-word, which is
+/// worse than useless: the reader gets the alarm without the instruction. The
+/// sentence now runs as the detail line, where it fits, and this supplies
+/// something short enough to be a heading.
+String shortVerdict(HealthParameter p) {
+  final r = p.idealRange;
+  final v = p.value;
+  // Null when there is no range to compare against, in which case "low" is the
+  // safer assumption for soil and the label alone is used elsewhere.
+  final high = (r != null && v != null) ? v > r.max : false;
+
+  return switch (p.parameter) {
+    'soil_pct' => high ? 'Soil is too wet' : 'Needs water',
+    'temp_c' => high ? 'Too warm' : 'Too cold',
+    'rh' => high ? 'Air is too humid' : 'Air is too dry',
+    'lux' => high ? 'Too much light' : 'Not enough light',
+    _ => p.label,
+  };
+}
+
 /// Reduces every pot and its health into the single thing worth saying.
 ///
 /// Worst-first: a user with one thriving plant and one dying one needs to be
@@ -184,13 +208,15 @@ DashboardSummary summarise(WidgetRef ref, List<Pot> pots) {
   final name = worstPot?.name ?? pots.first.name;
 
   if (worstRank >= 2 && worstParam != null) {
-    // The care engine already writes these for humans ("Soil is dry — water
-    // within a day"). Re-phrasing them here would mean maintaining the same
-    // sentence in two places and letting them drift apart.
+    final short = shortVerdict(worstParam);
     return DashboardSummary(
       verdict: worstRank == 3 ? Verdict.needsAction : Verdict.watch,
-      headline: many ? '$name needs you' : worstParam.message,
-      detail: many ? worstParam.message : 'Updated ${freshness(newestReading)}',
+      // Which plant, but only when that is ambiguous. With one pot its name is
+      // already on the hero card below.
+      headline: many ? '$name: $short' : short,
+      // The care engine's sentence, verbatim. It is the instruction, and it is
+      // the reason not to re-derive this wording in the UI.
+      detail: worstParam.message,
       subject: worstPot,
     );
   }
@@ -205,127 +231,206 @@ DashboardSummary summarise(WidgetRef ref, List<Pot> pots) {
   );
 }
 
-/// Collapsing header whose expanded state is the verdict and whose collapsed
-/// state keeps the status legible as a dot plus a short line.
+/// Collapsing header, built on [SliverPersistentHeader] rather than
+/// [SliverAppBar] + [FlexibleSpaceBar].
 ///
-/// The status survives the collapse on purpose: scrolling to look at a chart
-/// should not hide whether anything is wrong.
+/// FlexibleSpaceBar was the wrong primitive and produced three visible bugs on
+/// device: it applies `expandedTitleScale` (default **1.5**) on top of the
+/// title's own text style, so a headline animated from 17 to 26px actually
+/// drew at ~39px and swallowed a third of the screen; its title column is
+/// bottom-anchored and scaled, which threw the eyebrow up into the status bar;
+/// and the composed column overflowed midway through the collapse.
+///
+/// A persistent header delegate gives the shrink fraction directly and lays
+/// out exactly what it is told to.
+///
+/// The two states cross-fade rather than interpolating one layout. That is the
+/// same thing iOS large titles and Material's large top app bar do, and it
+/// removes the whole class of overflow bugs above: each state is laid out in
+/// its own box at its own fixed size.
 class StatusHeader extends ConsumerWidget {
   const StatusHeader({super.key, required this.pots});
 
   final List<Pot> pots;
 
+  /// Height of the expanded block *below* the pinned bar.
+  ///
+  /// Fits an eyebrow (18), one line of 26px headline (30), and two lines of
+  /// 13px detail (35), plus the gaps. Both text runs are capped, so no
+  /// care-engine string can outgrow it.
+  static const double _expandedBlock = 104;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final s = summarise(ref, pots);
+    final summary = summarise(ref, pots);
+    final top = MediaQuery.of(context).padding.top;
 
-    return SliverAppBar(
+    // With nothing paired the body already shows a full empty state with the
+    // same words. Repeating them in a large header said "add your first
+    // plant" three times on one screen, so the header stays quiet instead.
+    final collapsedOnly = summary.verdict == Verdict.empty;
+
+    return SliverPersistentHeader(
       pinned: true,
-      expandedHeight: 184,
-      backgroundColor: GGColors.bg,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: GGSpacing.s),
-          child: GGTappable(
-            radius: GGRadius.round,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PairPotScreen()),
-            ),
-            child: const GGIconTile(icon: Icons.add_rounded, size: 38),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(right: GGSpacing.m),
-          child: GGTappable(
-            radius: GGRadius.round,
-            onTap: () {},
-            child: const GGIconTile(icon: Icons.person_rounded, size: 38),
-          ),
-        ),
-      ],
-      flexibleSpace: LayoutBuilder(
-        builder: (context, constraints) {
-          final top = MediaQuery.of(context).padding.top;
-          // 0 collapsed, 1 fully expanded.
-          final t = ((constraints.maxHeight - top - kToolbarHeight) /
-                  (184 - kToolbarHeight))
-              .clamp(0.0, 1.0);
-
-          return FlexibleSpaceBar(
-            titlePadding: EdgeInsets.only(
-              left: 20,
-              // Leave room for the action buttons when collapsed, so a long
-              // headline cannot slide underneath them.
-              right: t < 0.5 ? 104 : 20,
-              bottom: 14 + 4 * t,
-            ),
-            title: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Eyebrow(summary: s, t: t),
-                Text(
-                  s.headline,
-                  maxLines: t > 0.5 ? 2 : 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: kFontFamily,
-                    // Shrinks rather than swapping between two widgets, so the
-                    // headline glides instead of popping.
-                    fontSize: 17 + 9 * t,
-                    fontWeight: FontWeight.w800,
-                    color: GGColors.textPrimary,
-                    letterSpacing: -0.3 - 0.4 * t,
-                    height: 1.18,
-                  ),
-                ),
-                // Detail is the first thing to go: at rest there is only room
-                // for the status dot and one line.
-                ClipRect(
-                  child: Align(
-                    heightFactor: t,
-                    alignment: Alignment.topLeft,
-                    child: Opacity(
-                      opacity: t,
-                      child: Padding(
-                        padding: EdgeInsets.only(top: 5 * t),
-                        child: Text(
-                          s.detail,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontFamily: kFontFamily,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: GGColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+      delegate: _HeaderDelegate(
+        summary: summary,
+        topPadding: top,
+        expandedBlock: collapsedOnly ? 0 : _expandedBlock,
+        showTitleWhenCollapsed: !collapsedOnly,
       ),
     );
   }
 }
 
-/// Status dot plus label, above the headline.
-///
-/// Carries the state twice — colour *and* an icon plus a word — because
-/// colour alone is not readable to everyone, and this is the one element on
-/// the screen that has to survive a three-second glance.
-class _Eyebrow extends StatelessWidget {
-  const _Eyebrow({required this.summary, required this.t});
+class _HeaderDelegate extends SliverPersistentHeaderDelegate {
+  _HeaderDelegate({
+    required this.summary,
+    required this.topPadding,
+    required this.expandedBlock,
+    required this.showTitleWhenCollapsed,
+  });
 
   final DashboardSummary summary;
-  final double t;
+  final double topPadding;
+  final double expandedBlock;
+  final bool showTitleWhenCollapsed;
+
+  static const double _bar = 56;
+
+  @override
+  double get minExtent => topPadding + _bar;
+
+  @override
+  double get maxExtent => topPadding + _bar + expandedBlock;
+
+  @override
+  bool shouldRebuild(_HeaderDelegate old) =>
+      old.summary.headline != summary.headline ||
+      old.summary.detail != summary.detail ||
+      old.summary.verdict != summary.verdict ||
+      old.topPadding != topPadding ||
+      old.expandedBlock != expandedBlock;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
+    final range = maxExtent - minExtent;
+    // 1 fully expanded, 0 collapsed.
+    final t = range <= 0 ? 0.0 : (1 - shrinkOffset / range).clamp(0.0, 1.0);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: GGColors.bg,
+        // A hairline only once collapsed. Without it, cards scrolling under
+        // the pinned bar have nothing to stop against and the bar stops
+        // reading as a separate layer. Fades in with the collapse so it is
+        // absent at rest, where the header and page are one surface.
+        border: Border(
+          bottom: BorderSide(
+            color: GGColors.outline.withValues(alpha: (1 - t).clamp(0.0, 1.0)),
+            width: t < 1 ? 1 : 0,
+          ),
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Expanded block. Sits below the bar, so the actions never overlap
+          // it and it cannot ride up into the status bar.
+          if (expandedBlock > 0)
+            Positioned(
+              left: 20,
+              right: 20,
+              top: topPadding + _bar,
+              height: expandedBlock,
+              child: IgnorePointer(
+                ignoring: t < 0.5,
+                child: Opacity(
+                  // Gone well before the bar finishes collapsing, so the two
+                  // states never both read as the page heading.
+                  opacity: Curves.easeOut.transform(t.clamp(0.0, 1.0)),
+                  child: _Expanded(summary: summary),
+                ),
+              ),
+            ),
+
+          // Pinned bar: inline title on the left, actions on the right.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: topPadding,
+            height: _bar,
+            child: Row(
+              children: [
+                const SizedBox(width: 20),
+                Expanded(
+                  child: showTitleWhenCollapsed
+                      ? Opacity(
+                          opacity: (1 - t * 1.6).clamp(0.0, 1.0),
+                          child: _Inline(summary: summary),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                const SizedBox(width: GGSpacing.s),
+                GGTappable(
+                  radius: GGRadius.round,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const PairPotScreen()),
+                  ),
+                  child: const GGIconTile(icon: Icons.add_rounded, size: 38),
+                ),
+                const SizedBox(width: GGSpacing.s),
+                GGTappable(
+                  radius: GGRadius.round,
+                  onTap: () {},
+                  child: const GGIconTile(icon: Icons.person_rounded, size: 38),
+                ),
+                const SizedBox(width: GGSpacing.m),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The collapsed state: a status dot and one line, so scrolling to a chart
+/// never hides whether something is wrong.
+class _Inline extends StatelessWidget {
+  const _Inline({required this.summary});
+
+  final DashboardSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _Dot(summary: summary, size: 16, iconSize: 10),
+        const SizedBox(width: GGSpacing.s),
+        Expanded(
+          child: Text(
+            summary.headline,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: kFontFamily,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: GGColors.textPrimary,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The expanded state: eyebrow, verdict, freshness.
+class _Expanded extends StatelessWidget {
+  const _Expanded({required this.summary});
+
+  final DashboardSummary summary;
 
   @override
   Widget build(BuildContext context) {
@@ -337,38 +442,87 @@ class _Eyebrow extends StatelessWidget {
       Verdict.empty => 'Get started',
     };
 
-    return Padding(
-      // Shrinks with the header. A fixed gap here overflowed the title column
-      // by a few pixels midway through the collapse -- enough to draw
-      // overflow stripes on every scroll.
-      padding: EdgeInsets.only(bottom: 2 + 5 * t),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              color: summary.color.withValues(alpha: 0.16),
-              shape: BoxShape.circle,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _Dot(summary: summary, size: 18, iconSize: 11),
+            const SizedBox(width: 7),
+            Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                fontFamily: kFontFamily,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: summary.textColor,
+                // Tracking is what makes a short uppercase label read as a
+                // deliberate eyebrow rather than as shouting.
+                letterSpacing: 0.9,
+              ),
             ),
-            child: Icon(summary.icon, size: 11, color: summary.textColor),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          summary.headline,
+          // One line, because the headline is now a short phrase. A second
+          // line here would push the detail out of the block.
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: kFontFamily,
+            // 26 and no scaling widget above it. The previous header set the
+            // same number and drew at 39.
+            fontSize: 26,
+            fontWeight: FontWeight.w800,
+            color: GGColors.textPrimary,
+            letterSpacing: -0.7,
+            height: 1.16,
           ),
-          const SizedBox(width: 7),
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontFamily: kFontFamily,
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: summary.textColor,
-              // Tracking is what makes a short uppercase label read as a
-              // deliberate eyebrow rather than as shouting.
-              letterSpacing: 0.9,
-            ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          summary.detail,
+          // Two, so the care engine's full instruction fits rather than being
+          // cut off after "water thoroughly today to avoid roo…".
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: kFontFamily,
+            fontSize: 13,
+            height: 1.35,
+            fontWeight: FontWeight.w500,
+            color: GGColors.textSecondary,
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Status carried by colour *and* an icon, because colour alone is not
+/// readable to everyone and this is the element that has to survive a
+/// three-second glance.
+class _Dot extends StatelessWidget {
+  const _Dot({required this.summary, required this.size, required this.iconSize});
+
+  final DashboardSummary summary;
+  final double size;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: summary.color.withValues(alpha: 0.16),
+        shape: BoxShape.circle,
       ),
+      child: Icon(summary.icon, size: iconSize, color: summary.textColor),
     );
   }
 }
